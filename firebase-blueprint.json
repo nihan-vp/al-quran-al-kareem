@@ -1,0 +1,56 @@
+{
+  "entities": {
+    "Bookmark": {
+      "title": "Bookmark",
+      "description": "A saved ayah for a user",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "User ID" },
+        "surahNumber": { "type": "number" },
+        "ayahNumber": { "type": "number" },
+        "surahName": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["uid", "surahNumber", "ayahNumber", "surahName", "timestamp"]
+    },
+    "LastRead": {
+      "title": "LastRead",
+      "description": "The last read position for a user",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "User ID" },
+        "surahNumber": { "type": "number" },
+        "ayahNumber": { "type": "number" },
+        "surahName": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["uid", "surahNumber", "ayahNumber", "surahName", "timestamp"]
+    },
+    "UserSettings": {
+      "title": "UserSettings",
+      "description": "User preferences",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "translation": { "type": "string" },
+        "reciter": { "type": "string" },
+        "theme": { "type": "string", "enum": ["light", "dark", "sepia"] }
+      },
+      "required": ["uid"]
+    }
+  },
+  "firestore": {
+    "/bookmarks/{bookmarkId}": {
+      "schema": "Bookmark",
+      "description": "User bookmarks"
+    },
+    "/lastRead/{userId}": {
+      "schema": "LastRead",
+      "description": "User last read position"
+    },
+    "/userSettings/{userId}": {
+      "schema": "UserSettings",
+      "description": "User settings"
+    }
+  }
+}
