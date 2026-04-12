@@ -327,7 +327,7 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
           const bookmarkId = bookmarks.find(b => b.surahNumber === surah.number && b.ayahNumber === ayah.numberInSurah)?.id;
 
           return (
-            <Card key={ayah.number} className="overflow-hidden border-none bg-white/50 shadow-sm transition-all hover:bg-white" ref={el => ayahRefs.current[idx] = el}>
+            <Card key={ayah.number} className="overflow-hidden border-none bg-white/50 shadow-sm transition-all hover:bg-white" ref={el => { ayahRefs.current[idx] = el; }}>
               <CardContent className="p-6 md:p-8">
                 <div className="flex flex-col gap-6">
                   <div className="flex items-center justify-between">
