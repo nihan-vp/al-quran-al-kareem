@@ -39,23 +39,31 @@ import { Surah, Ayah, PlaybackSettings } from '@/types';
 export function MemorizationView() {
   const { user } = useAuth();
   const { presets, addPreset, removePreset } = useFirestore(user?.uid);
-  
+
   const [surahs, setSurahs] = useState<Surah[]>([]);
   const [selectedSurah, setSelectedSurah] = useState<number>(1);
   const [startAyah, setStartAyah] = useState<number>(1);
   const [endAyah, setEndAyah] = useState<number>(7);
   const [repeatCount, setRepeatCount] = useState<number>(3);
   const [playMeaning, setPlayMeaning] = useState<boolean>(true);
-  
+  const [repeatOneAyah, setRepeatOneAyah] = useState<boolean>(false);
+
   const [ayahs, setAyahs] = useState<Ayah[]>([]);
   const [loading, setLoading] = useState(false);
-  
+
   const [settings, setSettings] = useState<PlaybackSettings>({
     delayBetweenAyahs: 1,
     delayBetweenCycles: 3,
     playbackSpeed: 1,
     reciter: 'ar.alafasy'
   });
+
+  // If repeatOneAyah is enabled, always set startAyah === endAyah
+  useEffect(() => {
+    if (repeatOneAyah) {
+      setEndAyah(startAyah);
+    }
+  }, [repeatOneAyah, startAyah]);
 
   const playback = useMemorizationPlayback(ayahs, repeatCount, playMeaning, settings);
 
@@ -67,6 +75,7 @@ export function MemorizationView() {
 
   const handleLoadRange = async () => {
     setLoading(true);
+    setAyahs([]); // Clear ayahs before loading new range
     try {
       const data = await quranService.getAyahsRange(selectedSurah, startAyah, endAyah);
       setAyahs(data);
@@ -100,6 +109,7 @@ export function MemorizationView() {
     setRepeatCount(preset.repeatCount);
     setPlayMeaning(preset.playMeaning);
     setSettings(preset.settings);
+    setRepeatOneAyah(preset.startAyah === preset.endAyah);
   };
 
   return (
@@ -131,27 +141,40 @@ export function MemorizationView() {
               </Select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+
+            <div className="grid grid-cols-2 gap-4 items-end">
               <div className="space-y-2">
                 <Label>Start Ayah</Label>
-                <Input 
-                  type="number" 
-                  min={1} 
-                  max={currentSurah?.numberOfAyahs || 1} 
-                  value={startAyah} 
-                  onChange={(e) => setStartAyah(Number(e.target.value))}
+                <Input
+                  type="number"
+                  min={1}
+                  max={currentSurah?.numberOfAyahs || 1}
+                  value={startAyah}
+                  onChange={(e) => {
+                    setStartAyah(Number(e.target.value));
+                    if (repeatOneAyah) setEndAyah(Number(e.target.value));
+                  }}
+                  disabled={ayahs.length > 0 && playback.isPlaying}
                 />
               </div>
               <div className="space-y-2">
                 <Label>End Ayah</Label>
-                <Input 
-                  type="number" 
-                  min={startAyah} 
-                  max={currentSurah?.numberOfAyahs || 1} 
-                  value={endAyah} 
+                <Input
+                  type="number"
+                  min={startAyah}
+                  max={currentSurah?.numberOfAyahs || 1}
+                  value={endAyah}
                   onChange={(e) => setEndAyah(Number(e.target.value))}
+                  disabled={repeatOneAyah || (ayahs.length > 0 && playback.isPlaying)}
                 />
               </div>
+            </div>
+            <div className="flex items-center justify-between space-x-2 rounded-lg border p-3 mt-2">
+              <div className="space-y-0.5">
+                <Label>Repeat One Ayah</Label>
+                <p className="text-xs text-muted-foreground">Repeat only the selected start ayah</p>
+              </div>
+              <Switch checked={repeatOneAyah} onCheckedChange={setRepeatOneAyah} />
             </div>
 
             <div className="space-y-2">
@@ -165,7 +188,7 @@ export function MemorizationView() {
                   <SelectItem value="3">3 Times</SelectItem>
                   <SelectItem value="5">5 Times</SelectItem>
                   <SelectItem value="10">10 Times</SelectItem>
-                  <SelectItem value="20">20 Times</SelectItem>
+                  <SelectItem value="999">♾️</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -239,6 +262,12 @@ export function MemorizationView() {
                 </div>
                 
                 <h2 className="text-3xl font-bold">{currentSurah?.englishName}</h2>
+                {/* Add Bismillah below surah name except for Al-Fatiha (1) and At-Tawbah (9) */}
+                {currentSurah && currentSurah.number !== 1 && currentSurah.number !== 9 && (
+                  <div className="py-2">
+                    <p className="quran-font text-2xl md:text-3xl text-white/80">بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ</p>
+                  </div>
+                )}
                 <p className="text-white/60">Ayah {ayahs[playback.currentAyahIndex]?.numberInSurah} of {endAyah}</p>
                 
                 <div className="py-8 min-h-40 flex flex-col justify-center">
@@ -252,11 +281,39 @@ export function MemorizationView() {
                     >
                       {playback.isArabicPlaying ? (
                         <p className="quran-font text-4xl md:text-5xl leading-relaxed">
-                          {ayahs[playback.currentAyahIndex]?.text}
+                          {(() => {
+                            const ayah = ayahs[playback.currentAyahIndex];
+                            if (!ayah) return '';
+                            let ayahText = ayah.text;
+                            const surahNum = ayah.surahNumber || selectedSurah;
+                            if (
+                              ayah.numberInSurah === 1 &&
+                              surahNum !== 1 &&
+                              surahNum !== 9
+                            ) {
+                              // Remove all forms of Bismillah with optional whitespace, newlines, alternate spellings, and diacritics
+                              const bismillahRegex = /^[\s\n\r\u200C\u200F\u202A\u202B\u202C]*بِسْمِ[\s\n\r\u200C\u200F\u202A\u202B\u202C]*[اٱ]للّ?ه[\s\n\r\u200C\u200F\u202A\u202B\u202C]*[اٱ]لرَّ?حْمَٰ?نِ[\s\n\r\u200C\u200F\u202A\u202B\u202C]*[اٱ]لرَّ?حِيمِ[\s\n\r\u200C\u200F\u202A\u202B\u202C]*[\n\r]*/u;
+                              let newAyahText = ayahText.replace(bismillahRegex, '').trimStart();
+                              if (ayahText === newAyahText) {
+                                // Try fallback: remove just the exact visible string
+                                const fallback = 'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ';
+                                if (ayahText.startsWith(fallback)) {
+                                  newAyahText = ayahText.slice(fallback.length).trimStart();
+                                }
+                              }
+                              ayahText = newAyahText;
+                            }
+                            return ayahText;
+                          })()}
                         </p>
                       ) : (
                         <p className="text-xl md:text-2xl font-medium leading-relaxed italic">
-                          {ayahs[playback.currentAyahIndex]?.malayalamTranslation}
+                          {(() => {
+                            const ayah = ayahs[playback.currentAyahIndex];
+                            if (!ayah) return '';
+                            // Only play Malayalam meaning for the current surah/ayah
+                            return ayah.malayalamTranslation || '';
+                          })()}
                         </p>
                       )}
                     </motion.div>
@@ -323,39 +380,48 @@ export function MemorizationView() {
                   >
                     <div className="flex justify-between items-start gap-4">
                       <Badge variant="outline" className="shrink-0">{ayah.numberInSurah}</Badge>
-                      <p className="quran-font text-2xl text-right leading-relaxed flex-1">{ayah.text}</p>
-                      {/* Malayalam audio button (controls hidden during playback) */}
-                      <div style={{ position: 'relative', minWidth: 120 }}>
-                        <audio
-                          controls={!playback.isPlaying}
-                          style={{ minWidth: 120, opacity: playback.isPlaying ? 0.5 : 1 }}
-                          title={playback.isPlaying ? "Disabled during main playback" : "Malayalam audio"}
+                      <p className="quran-font text-2xl text-right leading-relaxed flex-1">
+                        {(() => {
+                          let ayahText = ayah.text;
+                          const surahNum = ayah.surahNumber || selectedSurah;
+                          if (
+                            idx === 0 &&
+                            surahNum !== 1 &&
+                            surahNum !== 9
+                          ) {
+                            // Remove all forms of Bismillah with optional whitespace, newlines, alternate spellings, and diacritics
+                            const bismillahRegex = /^[\s\n\r\u200C\u200F\u202A\u202B\u202C]*بِسْمِ[\s\n\r\u200C\u200F\u202A\u202B\u202C]*[اٱ]للّ?ه[\s\n\r\u200C\u200F\u202A\u202B\u202C]*[اٱ]لرَّ?حْمَٰ?نِ[\s\n\r\u200C\u200F\u202A\u202B\u202C]*[اٱ]لرَّ?حِيمِ[\s\n\r\u200C\u200F\u202A\u202B\u202C]*[\n\r]*/u;
+                            let newAyahText = ayahText.replace(bismillahRegex, '').trimStart();
+                            if (ayahText === newAyahText) {
+                              // Try fallback: remove just the exact visible string
+                              const fallback = 'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ';
+                              if (ayahText.startsWith(fallback)) {
+                                newAyahText = ayahText.slice(fallback.length).trimStart();
+                              } else {
+                                // Optionally log for debugging
+                                // console.warn('Bismillah not removed:', ayahText);
+                              }
+                            }
+                            ayahText = newAyahText;
+                          }
+                          return ayahText;
+                        })()}
+                      </p>
+                      {/* Malayalam audio icon button (hidden during playback) */}
+                      <div style={{ position: 'relative', minWidth: 40 }}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-brand-primary"
+                          title={playback.isPlaying ? "Disabled during main playback" : "Play Malayalam audio"}
+                          disabled={playback.isPlaying}
+                          onClick={() => {
+                            const audio = new Audio(`https://lalithasaram.net/audio/qtaud/transl/${String(ayah.surahNumber || selectedSurah).padStart(3, '0')}_${String(ayah.numberInSurah).padStart(3, '0')}.ogg`);
+                            audio.play();
+                          }}
                         >
-                          <source
-                            src={`https://lalithasaram.net/audio/qtaud/transl/${String(ayah.surahNumber || selectedSurah).padStart(3, '0')}_${String(ayah.numberInSurah).padStart(3, '0')}.ogg`}
-                            type="audio/ogg"
-                          />
-                          Your browser does not support the audio element.
-                        </audio>
-                        {playback.isPlaying && (
-                          <div style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            width: '100%',
-                            height: '100%',
-                            background: 'rgba(255,255,255,0.7)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 12,
-                            color: '#333',
-                            pointerEvents: 'none',
-                            borderRadius: 8
-                          }}>
-                            Disabled during playback
-                          </div>
-                        )}
+                          <Volume2 className="h-5 w-5" />
+                        </Button>
                       </div>
                     </div>
                     <p className="mt-4 text-sm text-muted-foreground italic">{ayah.malayalamTranslation}</p>

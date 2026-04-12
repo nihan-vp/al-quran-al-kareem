@@ -63,20 +63,25 @@ export const quranService = {
     const surahs = data.data;
     const baseAyahs = surahs[0].ayahs.slice(start - 1, end);
 
-    return baseAyahs.map((ayah: any, index: number) => {
+    return baseAyahs.map((ayah: any, idx: number) => {
       const result: any = { ...ayah };
-      // Add translations from other editions
+      // Always set surahNumber and numberInSurah
+      result.surahNumber = result.surahNumber || surahNumber;
+      result.numberInSurah = result.numberInSurah || (idx + (start || 1));
+      // Add translations from other editions by matching numberInSurah
       surahs.slice(1).forEach((editionSurah: any) => {
-        const editionAyah = editionSurah.ayahs[start - 1 + index];
-        if (editionSurah.edition.language === 'ml') {
-          result.malayalamTranslation = editionAyah.text;
-        } else if (editionSurah.edition.language === 'en') {
-          result.translation = editionAyah.text;
+        const editionAyah = editionSurah.ayahs.find((a: any) => a.numberInSurah === result.numberInSurah);
+        if (editionAyah) {
+          if (editionSurah.edition.language === 'ml') {
+            result.malayalamTranslation = editionAyah.text;
+          } else if (editionSurah.edition.language === 'en') {
+            result.translation = editionAyah.text;
+          }
         }
       });
       // Ensure surah and ayah numbers are set for the audio URL
-      const surahNum = result.surahNumber || surahNumber;
-      const ayahNum = result.numberInSurah || result.number || (start + index);
+      const surahNum = result.surahNumber;
+      const ayahNum = result.numberInSurah;
       result.malayalamAudioUrl = undefined;
       result._malayalamAudioUrlCheck = this.getMalayalamAudioUrl(surahNum, ayahNum);
       result._malayalamAudioSurah = surahNum;

@@ -63,6 +63,10 @@ export function useMemorizationPlayback(
     if (!audioRef.current || ayahs.length === 0 || !state.isPlaying) return;
 
     const currentAyah = ayahs[state.currentAyahIndex];
+    if (!currentAyah) {
+      console.warn('No currentAyah for playback:', state.currentAyahIndex, ayahs);
+      return;
+    }
     let url = '';
 
     // Remove any previous error handler

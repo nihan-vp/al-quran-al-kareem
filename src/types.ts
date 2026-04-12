@@ -77,3 +77,10 @@ export interface PlaybackSettings {
   playbackSpeed: number;
   reciter: string;
 }
+
+export interface Slider {
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+}

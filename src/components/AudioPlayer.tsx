@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, X, Volume2 } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, X, Volume2, Repeat } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -20,6 +20,9 @@ export function AudioPlayer({ src, title, subtitle, onClose }: AudioPlayerProps)
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
+  // If src contains ?repeat=1, enable repeat by default
+  const initialRepeat = typeof src === 'string' && src.includes('?repeat=1');
+  const [repeat, setRepeat] = useState(initialRepeat);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -52,10 +55,11 @@ export function AudioPlayer({ src, title, subtitle, onClose }: AudioPlayerProps)
     }
   };
 
-  const handleSliderChange = (value: number[]) => {
+  const handleSliderChange = (value: number | readonly number[]) => {
+    const v = Array.isArray(value) ? value[0] : value;
     if (audioRef.current) {
-      audioRef.current.currentTime = value[0];
-      setProgress(value[0]);
+      audioRef.current.currentTime = v;
+      setProgress(v);
     }
   };
 
@@ -71,16 +75,30 @@ export function AudioPlayer({ src, title, subtitle, onClose }: AudioPlayerProps)
         src={src}
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={handleLoadedMetadata}
-        onEnded={() => setIsPlaying(false)}
+        onEnded={() => {
+          if (repeat && audioRef.current) {
+            audioRef.current.currentTime = 0;
+            audioRef.current.play();
+            setIsPlaying(true);
+          } else {
+            setIsPlaying(false);
+            // Dispatch global event for SurahView to listen for sequential playback
+            window.dispatchEvent(new Event('quran-audio-ended'));
+          }
+        }}
       />
-      
+
       <div className="flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <div className="flex flex-col overflow-hidden">
             <h4 className="truncate text-sm font-bold">{title}</h4>
             <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
           </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
+            if (onClose) onClose();
+            // Dispatch global event to stop sequential mode
+            window.dispatchEvent(new Event('quran-audio-close'));
+          }}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -106,6 +124,16 @@ export function AudioPlayer({ src, title, subtitle, onClose }: AudioPlayerProps)
           </Button>
           <Button variant="ghost" size="icon" onClick={() => { if (audioRef.current) audioRef.current.currentTime += 5; }}>
             <SkipForward className="h-5 w-5" />
+          </Button>
+          <Button
+            variant={repeat ? "default" : "ghost"}
+            size="icon"
+            aria-label="Repeat infinitely"
+            className={repeat ? "bg-brand-primary text-white" : ""}
+            onClick={() => setRepeat(r => !r)}
+            title="Repeat infinitely"
+          >
+            <Repeat className="h-5 w-5" />
           </Button>
         </div>
       </div>
