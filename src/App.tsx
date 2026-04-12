@@ -6,6 +6,7 @@
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useRef } from 'react';
 import { 
   Book, 
   Search, 
@@ -233,8 +234,8 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
   const { user } = useAuth();
   const { bookmarks, addBookmark, removeBookmark, updateLastRead } = useFirestore(user?.uid);
   const { playAudio } = useAudio();
-  // Sequential playback state
   const [sequential, setSequential] = useState<{ active: boolean; index: number | null }>({ active: false, index: null });
+  const ayahRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   useEffect(() => {
     if (id) {
@@ -254,7 +255,6 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
     }
   }, [id, user]);
 
-  // Listen for audio end to play next ayah if sequential mode is active
   useEffect(() => {
     if (!sequential.active || sequential.index == null || !surah) return;
     const handler = () => {
@@ -274,12 +274,17 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
     return () => window.removeEventListener('quran-audio-ended', handler);
   }, [sequential, surah, playAudio, repeatAyah]);
 
-  // Stop sequential mode if player is closed
   useEffect(() => {
     const handler = () => setSequential({ active: false, index: null });
     window.addEventListener('quran-audio-close', handler);
     return () => window.removeEventListener('quran-audio-close', handler);
   }, []);
+
+  useEffect(() => {
+    if (sequential.active && sequential.index != null && ayahRefs.current[sequential.index]) {
+      ayahRefs.current[sequential.index]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [sequential]);
 
   if (loading) return <div className="space-y-4">
     <Skeleton className="h-40 w-full rounded-2xl" />
@@ -322,7 +327,7 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
           const bookmarkId = bookmarks.find(b => b.surahNumber === surah.number && b.ayahNumber === ayah.numberInSurah)?.id;
 
           return (
-            <Card key={ayah.number} className="overflow-hidden border-none bg-white/50 shadow-sm transition-all hover:bg-white">
+            <Card key={ayah.number} className="overflow-hidden border-none bg-white/50 shadow-sm transition-all hover:bg-white" ref={el => ayahRefs.current[idx] = el}>
               <CardContent className="p-6 md:p-8">
                 <div className="flex flex-col gap-6">
                   <div className="flex items-center justify-between">
