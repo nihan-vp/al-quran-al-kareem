@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useRef } from 'react';
@@ -37,7 +37,10 @@ import { quranService } from './services/quranService';
 import { Surah, Ayah, SurahDetail } from './types';
 import { useAuth } from './hooks/useAuth';
 import { useFirestore } from './hooks/useFirestore';
-import { signInWithGoogle, logout } from './firebase';
+import { logout } from './firebase';
+import { AuthForm } from './components/AuthForm';
+import LoginPage from './pages/LoginPage';
+import SignUpPage from './pages/SignUpPage';
 import { AudioPlayer } from './components/AudioPlayer';
 import { MemorizationView } from './components/MemorizationView';
 
@@ -62,6 +65,7 @@ const useAudio = () => {
 const Navbar = () => {
   const { user } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const navigate = useNavigate();
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b bg-white/80 backdrop-blur-md">
@@ -81,14 +85,14 @@ const Navbar = () => {
           <Link to="/bookmarks" className="text-sm font-medium hover:text-brand-primary">Bookmarks</Link>
           {user ? (
             <div className="flex items-center gap-4">
-              <span className="text-sm text-muted-foreground">{user.displayName}</span>
+              <span className="text-sm text-muted-foreground">{user.email}</span>
               <Button variant="ghost" size="sm" onClick={logout}>
                 <LogOut className="mr-2 h-4 w-4" />
                 Logout
               </Button>
             </div>
           ) : (
-            <Button size="sm" onClick={signInWithGoogle}>
+            <Button size="sm" onClick={() => navigate('/login')}>
               <UserIcon className="mr-2 h-4 w-4" />
               Login
             </Button>
@@ -117,7 +121,10 @@ const Navbar = () => {
               {user ? (
                 <Button variant="ghost" onClick={() => { logout(); setIsMenuOpen(false); }}>Logout</Button>
               ) : (
-                <Button onClick={() => { signInWithGoogle(); setIsMenuOpen(false); }}>Login</Button>
+                <Button onClick={() => { navigate('/login'); setIsMenuOpen(false); }}>
+                  <UserIcon className="mr-2 h-4 w-4" />
+                  Login
+                </Button>
               )}
             </div>
           </motion.div>
@@ -347,6 +354,14 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
                           } else {
                             playAudio(audioUrl + '?repeat=1', surah.englishName, `Ayah ${ayah.numberInSurah}`);
                           }
+                          if (user) {
+                            updateLastRead({
+                              uid: user.uid,
+                              surahNumber: surah.number,
+                              ayahNumber: ayah.numberInSurah,
+                              surahName: surah.englishName
+                            });
+                          }
                         }}
                         title="Play Ayah"
                       >
@@ -371,6 +386,14 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
                             }
                             return newState;
                           });
+                          if (user) {
+                            updateLastRead({
+                              uid: user.uid,
+                              surahNumber: surah.number,
+                              ayahNumber: ayah.numberInSurah,
+                              surahName: surah.englishName
+                            });
+                          }
                         }}
                         title="Repeat this Ayah infinitely"
                       >
@@ -381,7 +404,7 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
                         size="icon" 
                         className={isBookmarked ? "text-brand-primary" : "text-muted-foreground"}
                         onClick={() => {
-                          if (!user) return signInWithGoogle();
+                          if (!user) return;
                           if (isBookmarked && bookmarkId) {
                             removeBookmark(bookmarkId);
                           } else {
@@ -393,6 +416,12 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
                               uid: user.uid
                             });
                           }
+                          updateLastRead({
+                            uid: user.uid,
+                            surahNumber: surah.number,
+                            ayahNumber: ayah.numberInSurah,
+                            surahName: surah.englishName
+                          });
                         }}
                       >
                         <BookmarkIcon className={isBookmarked ? "fill-current" : ""} />
@@ -453,7 +482,7 @@ const BookmarksView = () => {
       <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
         <BookmarkIcon className="h-16 w-16 text-muted-foreground opacity-20" />
         <h2 className="text-2xl font-bold">Sign in to see your bookmarks</h2>
-        <Button onClick={signInWithGoogle}>Login with Google</Button>
+        <AuthForm />
       </div>
     );
   }
@@ -513,6 +542,8 @@ export default function App() {
               <Route path="/surah/:id" element={<SurahView repeatAyah={repeatAyah} setRepeatAyah={setRepeatAyah} />} />
               <Route path="/bookmarks" element={<BookmarksView />} />
               <Route path="/memorize" element={<MemorizationView />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/signup" element={<SignUpPage />} />
             </Routes>
           </main>
           <footer className="border-t bg-white py-8">
