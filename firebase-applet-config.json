@@ -1,10 +1,10 @@
 {
-  "projectId": "ugc-work",
-  "appId": "1:446628923445:web:dff28b3ea6261bded0497c",
-  "apiKey": "AIzaSyDfz4zzmAK_FprRE_LK3QkBX1X77yzf1bk",
-  "authDomain": "ugc-work.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-73062437-cf0d-4b76-bc36-273ee3bcb8d0",
-  "storageBucket": "ugc-work.firebasestorage.app",
-  "messagingSenderId": "446628923445",
-  "measurementId": ""
+  "apiKey": "AIzaSyBmNcXyyGxu0YZIE9yXV-uNMeFS8ewfAWs",
+  "authDomain": "quran-app-wma.firebaseapp.com",
+  "projectId": "quran-app-wma",
+  "storageBucket": "quran-app-wma.firebasestorage.app",
+  "messagingSenderId": "482355727181",
+  "appId": "1:482355727181:web:38e6b01c45acb68a428504",
+  "measurementId": "G-FMPWNFVTNL",
+  "firestoreDatabaseId": "(default)"
 }

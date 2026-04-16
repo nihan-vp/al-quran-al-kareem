@@ -107,34 +107,31 @@ export function useMemorizationPlayback(
         setState(prev => ({ ...prev, isArabicPlaying: false, progress: 0 }));
       }, settings.delayBetweenAyahs * 1000);
     } else {
-      // Move to next ayah or next repeat
-      if (state.currentAyahIndex < ayahs.length - 1) {
-        // Next ayah
+      // Repeat each ayah for repeatCount times before moving to next ayah
+      if (state.currentRepeat < repeatCount) {
+        // Repeat current ayah
         timeoutRef.current = setTimeout(() => {
-          setState(prev => ({ 
-            ...prev, 
-            currentAyahIndex: prev.currentAyahIndex + 1, 
+          setState(prev => ({
+            ...prev,
+            currentRepeat: prev.currentRepeat + 1,
             isArabicPlaying: true,
-            progress: 0 
+            progress: 0
+          }));
+        }, settings.delayBetweenAyahs * 1000);
+      } else if (state.currentAyahIndex < ayahs.length - 1) {
+        // Move to next ayah and reset repeat
+        timeoutRef.current = setTimeout(() => {
+          setState(prev => ({
+            ...prev,
+            currentAyahIndex: prev.currentAyahIndex + 1,
+            currentRepeat: 1,
+            isArabicPlaying: true,
+            progress: 0
           }));
         }, settings.delayBetweenAyahs * 1000);
       } else {
-        // End of range, check repeats
-        if (state.currentRepeat < repeatCount) {
-          // Next repeat cycle
-          timeoutRef.current = setTimeout(() => {
-            setState(prev => ({ 
-              ...prev, 
-              currentRepeat: prev.currentRepeat + 1, 
-              currentAyahIndex: 0, 
-              isArabicPlaying: true,
-              progress: 0 
-            }));
-          }, settings.delayBetweenCycles * 1000);
-        } else {
-          // Finished all repeats
-          setState(prev => ({ ...prev, isPlaying: false, progress: 100 }));
-        }
+        // Finished all ayahs
+        setState(prev => ({ ...prev, isPlaying: false, progress: 100 }));
       }
     }
   };
