@@ -34,11 +34,13 @@ import { quranService } from '@/services/quranService';
 import { useAuth } from '@/hooks/useAuth';
 import { useFirestore } from '@/hooks/useFirestore';
 import { useMemorizationPlayback } from '@/hooks/useMemorizationPlayback';
-import { Surah, Ayah, PlaybackSettings } from '@/types';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Surah, Ayah, PlaybackSettings, MemorizationPreset } from '@/types';
 
 export function MemorizationView() {
   const { user } = useAuth();
   const { presets, addPreset, removePreset } = useFirestore(user?.uid);
+  const location = useLocation();
 
   const [surahs, setSurahs] = useState<Surah[]>([]);
   const [selectedSurah, setSelectedSurah] = useState<number>(1);
@@ -58,6 +60,26 @@ export function MemorizationView() {
     reciter: 'ar.alafasy'
   });
 
+  // Parse URL query params if present (e.g. /memorize?surah=2&start=1&end=10)
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const surahParam = searchParams.get('surah');
+    const startParam = searchParams.get('start');
+    const endParam = searchParams.get('end');
+    const repeatParam = searchParams.get('repeat');
+
+    if (surahParam) {
+      const sNum = parseInt(surahParam, 10);
+      const sStart = startParam ? parseInt(startParam, 10) : 1;
+      const sEnd = endParam ? parseInt(endParam, 10) : 7;
+      setSelectedSurah(sNum);
+      setStartAyah(sStart);
+      setEndAyah(sEnd);
+      if (repeatParam) setRepeatCount(parseInt(repeatParam, 10));
+      handleLoadRangeFor(sNum, sStart, sEnd);
+    }
+  }, [location.search]);
+
   // If repeatOneAyah is enabled, always set startAyah === endAyah
   useEffect(() => {
     if (repeatOneAyah) {
@@ -73,11 +95,13 @@ export function MemorizationView() {
 
   const currentSurah = surahs.find(s => s.number === selectedSurah);
 
-  const handleLoadRange = async () => {
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const handleLoadRangeFor = async (surahId: number, start: number, end: number) => {
     setLoading(true);
-    setAyahs([]); // Clear ayahs before loading new range
+    setAyahs([]);
     try {
-      const data = await quranService.getAyahsRange(selectedSurah, startAyah, endAyah);
+      const data = await quranService.getAyahsRange(surahId, start, end);
       setAyahs(data);
     } catch (error) {
       console.error("Error loading range:", error);
@@ -86,10 +110,16 @@ export function MemorizationView() {
     }
   };
 
-  const handleSavePreset = () => {
-    if (!user) return;
-    const title = `${currentSurah?.englishName} (${startAyah}-${endAyah})`;
-    addPreset({
+  const handleLoadRange = () => handleLoadRangeFor(selectedSurah, startAyah, endAyah);
+
+  const navigate = useNavigate();
+  const handleSavePreset = async () => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    const title = `${currentSurah?.englishName || 'Surah ' + selectedSurah} (${startAyah}-${endAyah})`;
+    await addPreset({
       title,
       surahNumber: selectedSurah,
       startAyah,
@@ -97,19 +127,22 @@ export function MemorizationView() {
       repeatCount,
       playMeaning,
       settings,
-      timestamp: Date.now(),
-      uid: user.uid
+      timestamp: Date.now()
     });
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2000);
   };
 
-  const loadPreset = (preset: any) => {
+  const loadPreset = async (preset: MemorizationPreset) => {
     setSelectedSurah(preset.surahNumber);
     setStartAyah(preset.startAyah);
     setEndAyah(preset.endAyah);
     setRepeatCount(preset.repeatCount);
     setPlayMeaning(preset.playMeaning);
-    setSettings(preset.settings);
+    if (preset.settings) setSettings(preset.settings);
     setRepeatOneAyah(preset.startAyah === preset.endAyah);
+
+    await handleLoadRangeFor(preset.surahNumber, preset.startAyah, preset.endAyah);
   };
 
   return (
@@ -205,21 +238,27 @@ export function MemorizationView() {
               {loading ? "Loading..." : "Load Range"}
             </Button>
 
-            {user && (
-              <Button variant="outline" className="w-full" onClick={handleSavePreset}>
-                <Save className="mr-2 h-4 w-4" />
-                Save as Preset
-              </Button>
-            )}
+            <Button variant="outline" className="w-full" onClick={handleSavePreset}>
+              {saveSuccess ? (
+                <span className="text-emerald-600 font-semibold flex items-center justify-center gap-1">
+                  ✓ Preset Saved!
+                </span>
+              ) : (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Save as Preset
+                </>
+              )}
+            </Button>
           </CardContent>
         </Card>
 
         {/* Presets */}
         {presets.length > 0 && (
           <Card className="border-none bg-white/50 shadow-sm">
-            <CardHeader>
+            <CardHeader className="pb-3">
               <CardTitle className="text-sm flex items-center gap-2">
-                <History className="h-4 w-4" />
+                <History className="h-4 w-4 text-brand-primary" />
                 Your Presets
               </CardTitle>
             </CardHeader>
@@ -227,15 +266,22 @@ export function MemorizationView() {
               <ScrollArea className="h-48">
                 <div className="p-4 space-y-2">
                   {presets.map(p => (
-                    <div key={p.id} className="flex items-center justify-between group">
+                    <div key={p.id} className="flex items-center justify-between group rounded-lg p-2 hover:bg-slate-100/80 transition-colors">
                       <button 
-                        className="text-sm text-left hover:text-brand-primary flex-1"
+                        className="text-sm font-medium text-left hover:text-brand-primary flex-1 truncate pr-2"
                         onClick={() => loadPreset(p)}
+                        title="Click to load range"
                       >
                         {p.title}
                       </button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100" onClick={() => removePreset(p.id)}>
-                        <Square className="h-3 w-3" />
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive" 
+                        onClick={() => removePreset(p.id)}
+                        title="Delete preset"
+                      >
+                        <Square className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   ))}

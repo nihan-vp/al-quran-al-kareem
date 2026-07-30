@@ -4,8 +4,8 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, X, Volume2, Repeat } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Play, Pause, SkipBack, SkipForward, X, Repeat } from 'lucide-react';
+import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 
@@ -20,15 +20,28 @@ export function AudioPlayer({ src, title, subtitle, onClose }: AudioPlayerProps)
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
-  // If src contains ?repeat=1, enable repeat by default
   const initialRepeat = typeof src === 'string' && src.includes('?repeat=1');
   const [repeat, setRepeat] = useState(initialRepeat);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Sync repeat state whenever src changes
+  useEffect(() => {
+    const isRepeatSrc = typeof src === 'string' && src.includes('?repeat=1');
+    setRepeat(isRepeatSrc);
+  }, [src]);
+
+  // Keep HTML5 audio loop property synced with repeat state
   useEffect(() => {
     if (audioRef.current) {
-      audioRef.current.play();
-      setIsPlaying(true);
+      audioRef.current.loop = repeat;
+    }
+    // Broadcast repeat change to keep cards in sync
+    window.dispatchEvent(new CustomEvent('quran-repeat-changed', { detail: { repeat } }));
+  }, [repeat]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
     }
   }, [src]);
 
@@ -68,7 +81,7 @@ export function AudioPlayer({ src, title, subtitle, onClose }: AudioPlayerProps)
       initial={{ y: 100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: 100, opacity: 0 }}
-      className="fixed bottom-6 left-1/2 z-50 w-[90%] max-w-md -translate-x-1/2 overflow-hidden rounded-2xl border bg-white/90 p-4 shadow-2xl backdrop-blur-xl md:bottom-10"
+      className="fixed bottom-20 left-1/2 z-50 w-[90%] max-w-md -translate-x-1/2 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-2xl backdrop-blur-xl md:bottom-10"
     >
       <audio
         ref={audioRef}
@@ -82,7 +95,6 @@ export function AudioPlayer({ src, title, subtitle, onClose }: AudioPlayerProps)
             setIsPlaying(true);
           } else {
             setIsPlaying(false);
-            // Dispatch global event for SurahView to listen for sequential playback
             window.dispatchEvent(new Event('quran-audio-ended'));
           }
         }}
@@ -92,13 +104,24 @@ export function AudioPlayer({ src, title, subtitle, onClose }: AudioPlayerProps)
         <div className="flex items-center justify-between">
           <div className="flex flex-col overflow-hidden">
             <h4 className="truncate text-sm font-bold">{title}</h4>
-            <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
+            <p className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
+              <span>{subtitle}</span>
+              {repeat && (
+                <span className="inline-flex items-center gap-0.5 rounded bg-brand-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-brand-primary">
+                  <Repeat className="h-3 w-3" /> Infinite Loop
+                </span>
+              )}
+            </p>
           </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => {
-            if (onClose) onClose();
-            // Dispatch global event to stop sequential mode
-            window.dispatchEvent(new Event('quran-audio-close'));
-          }}>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-8 w-8 text-muted-foreground hover:text-slate-900" 
+            onClick={() => {
+              if (onClose) onClose();
+              window.dispatchEvent(new Event('quran-audio-close'));
+            }}
+          >
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -117,7 +140,7 @@ export function AudioPlayer({ src, title, subtitle, onClose }: AudioPlayerProps)
           </Button>
           <Button 
             size="icon" 
-            className="h-12 w-12 rounded-full bg-brand-primary hover:bg-brand-primary/90" 
+            className="h-12 w-12 rounded-full bg-brand-primary text-white shadow-md hover:bg-brand-primary/90" 
             onClick={togglePlay}
           >
             {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6 fill-current" />}
@@ -128,10 +151,10 @@ export function AudioPlayer({ src, title, subtitle, onClose }: AudioPlayerProps)
           <Button
             variant={repeat ? "default" : "ghost"}
             size="icon"
-            aria-label="Repeat infinitely"
-            className={repeat ? "bg-brand-primary text-white" : ""}
-            onClick={() => setRepeat(r => !r)}
-            title="Repeat infinitely"
+            aria-label="Toggle infinite repeat"
+            className={repeat ? "bg-brand-primary text-white shadow-sm" : "text-muted-foreground hover:text-brand-primary"}
+            onClick={() => setRepeat(prev => !prev)}
+            title={repeat ? "Infinite repeat enabled (Click to disable)" : "Enable infinite repeat loop"}
           >
             <Repeat className="h-5 w-5" />
           </Button>

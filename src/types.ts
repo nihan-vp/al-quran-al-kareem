@@ -84,3 +84,17 @@ export interface Slider {
   step: number;
   value: number;
 }
+
+export interface MemorizationPlan {
+  id: string;
+  uid: string;
+  title: string;
+  surahNumber: number;
+  surahName: string;
+  startAyah: number;
+  endAyah: number;
+  repeatCount: number;
+  playMeaning: boolean;
+  settings?: PlaybackSettings;
+  createdAt: number;
+}

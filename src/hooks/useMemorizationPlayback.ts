@@ -107,8 +107,8 @@ export function useMemorizationPlayback(
         setState(prev => ({ ...prev, isArabicPlaying: false, progress: 0 }));
       }, settings.delayBetweenAyahs * 1000);
     } else {
-      // Repeat each ayah for repeatCount times before moving to next ayah
-      if (state.currentRepeat < repeatCount) {
+      // Repeat each ayah for repeatCount times (or endlessly if repeatCount >= 999) before moving to next ayah
+      if (repeatCount >= 999 || state.currentRepeat < repeatCount) {
         // Repeat current ayah
         timeoutRef.current = setTimeout(() => {
           setState(prev => ({

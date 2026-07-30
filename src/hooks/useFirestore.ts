@@ -4,27 +4,29 @@
  */
 
 import { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, serverTimestamp, getDocs, setDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, deleteDoc, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Bookmark, LastRead, MemorizationPreset } from '../types';
+import { Bookmark, LastRead, MemorizationPreset, MemorizationPlan } from '../types';
 
 export function useFirestore(userId: string | undefined) {
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [lastRead, setLastRead] = useState<LastRead | null>(null);
   const [presets, setPresets] = useState<MemorizationPreset[]>([]);
+  const [plans, setPlans] = useState<MemorizationPlan[]>([]);
 
   useEffect(() => {
     if (!userId) {
       setBookmarks([]);
       setLastRead(null);
       setPresets([]);
+      setPlans([]);
       return;
     }
 
     // Bookmarks listener
     const bq = query(collection(db, 'bookmarks'), where('uid', '==', userId));
     const unsubscribeBookmarks = onSnapshot(bq, (snapshot) => {
-      const b = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Bookmark));
+      const b = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Bookmark));
       setBookmarks(b);
     }, (error) => {
       console.error("Firestore Error (Bookmarks):", error);
@@ -32,9 +34,11 @@ export function useFirestore(userId: string | undefined) {
 
     // Last Read listener
     const lrq = doc(db, 'lastRead', userId);
-    const unsubscribeLastRead = onSnapshot(lrq, (doc) => {
-      if (doc.exists()) {
-        setLastRead(doc.data() as LastRead);
+    const unsubscribeLastRead = onSnapshot(lrq, (d) => {
+      if (d.exists()) {
+        setLastRead(d.data() as LastRead);
+      } else {
+        setLastRead(null);
       }
     }, (error) => {
       console.error("Firestore Error (LastRead):", error);
@@ -43,41 +47,30 @@ export function useFirestore(userId: string | undefined) {
     // Presets listener
     const pq = query(collection(db, 'memorizationPresets'), where('uid', '==', userId));
     const unsubscribePresets = onSnapshot(pq, (snapshot) => {
-      const p = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MemorizationPreset));
+      const p = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as MemorizationPreset));
       setPresets(p);
     }, (error) => {
       console.error("Firestore Error (Presets):", error);
+    });
+
+    // Plans listener
+    const plansq = query(collection(db, 'memorizationPlans'), where('uid', '==', userId));
+    const unsubscribePlans = onSnapshot(plansq, (snapshot) => {
+      const pl = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as MemorizationPlan));
+      setPlans(pl);
+    }, (error) => {
+      console.error("Firestore Error (Plans):", error);
     });
 
     return () => {
       unsubscribeBookmarks();
       unsubscribeLastRead();
       unsubscribePresets();
+      unsubscribePlans();
     };
   }, [userId]);
 
-  const addPreset = async (preset: Omit<MemorizationPreset, 'id'>) => {
-    if (!userId) return;
-    try {
-      await addDoc(collection(db, 'memorizationPresets'), {
-        ...preset,
-        uid: userId,
-        timestamp: Date.now()
-      });
-    } catch (error) {
-      console.error("Error adding preset:", error);
-    }
-  };
-
-  const removePreset = async (id: string) => {
-    try {
-      await deleteDoc(doc(db, 'memorizationPresets', id));
-    } catch (error) {
-      console.error("Error removing preset:", error);
-    }
-  };
-
-  const addBookmark = async (bookmark: Omit<Bookmark, 'id'>) => {
+  const addBookmark = async (bookmark: Omit<Bookmark, 'id' | 'uid'>) => {
     if (!userId) return;
     try {
       await addDoc(collection(db, 'bookmarks'), {
@@ -91,6 +84,7 @@ export function useFirestore(userId: string | undefined) {
   };
 
   const removeBookmark = async (id: string) => {
+    if (!userId) return;
     try {
       await deleteDoc(doc(db, 'bookmarks', id));
     } catch (error) {
@@ -98,10 +92,62 @@ export function useFirestore(userId: string | undefined) {
     }
   };
 
-  const updateLastRead = async (lr: Omit<LastRead, 'timestamp'>) => {
+  const addPreset = async (preset: Omit<MemorizationPreset, 'id' | 'uid'>) => {
     if (!userId) return;
     try {
-      const { setDoc } = await import('firebase/firestore');
+      await addDoc(collection(db, 'memorizationPresets'), {
+        ...preset,
+        uid: userId,
+        timestamp: Date.now()
+      });
+    } catch (error) {
+      console.error("Error adding preset:", error);
+    }
+  };
+
+  const removePreset = async (id: string) => {
+    if (!userId) return;
+    try {
+      await deleteDoc(doc(db, 'memorizationPresets', id));
+    } catch (error) {
+      console.error("Error removing preset:", error);
+    }
+  };
+
+  const addPlan = async (plan: Omit<MemorizationPlan, 'id' | 'uid' | 'createdAt'>) => {
+    if (!userId) return;
+    try {
+      await addDoc(collection(db, 'memorizationPlans'), {
+        ...plan,
+        uid: userId,
+        createdAt: Date.now()
+      });
+    } catch (error) {
+      console.error("Error adding plan:", error);
+    }
+  };
+
+  const updatePlan = async (id: string, updates: Partial<MemorizationPlan>) => {
+    if (!userId) return;
+    try {
+      await updateDoc(doc(db, 'memorizationPlans', id), updates);
+    } catch (error) {
+      console.error("Error updating plan:", error);
+    }
+  };
+
+  const removePlan = async (id: string) => {
+    if (!userId) return;
+    try {
+      await deleteDoc(doc(db, 'memorizationPlans', id));
+    } catch (error) {
+      console.error("Error removing plan:", error);
+    }
+  };
+
+  const updateLastRead = async (lr: Omit<LastRead, 'timestamp' | 'uid'>) => {
+    if (!userId) return;
+    try {
       await setDoc(doc(db, 'lastRead', userId), {
         ...lr,
         uid: userId,
@@ -112,5 +158,18 @@ export function useFirestore(userId: string | undefined) {
     }
   };
 
-  return { bookmarks, lastRead, presets, addBookmark, removeBookmark, updateLastRead, addPreset, removePreset };
+  return {
+    bookmarks,
+    lastRead,
+    presets,
+    plans,
+    addBookmark,
+    removeBookmark,
+    updateLastRead,
+    addPreset,
+    removePreset,
+    addPlan,
+    updatePlan,
+    removePlan
+  };
 }

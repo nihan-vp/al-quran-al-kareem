@@ -7,12 +7,12 @@ import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams, u
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useRef } from 'react';
-import { 
-  Book, 
-  Search, 
-  Bookmark as BookmarkIcon, 
-  History, 
-  Settings, 
+import {
+  Book,
+  Search,
+  Bookmark as BookmarkIcon,
+  History,
+  Settings,
   User as UserIcon,
   LogOut,
   Play,
@@ -22,7 +22,10 @@ import {
   Menu,
   X,
   Volume2,
-  BrainCircuit
+  BrainCircuit,
+  Repeat,
+  Target,
+  Sparkles
 } from 'lucide-react';
 
 import { Button } from '../components/ui/button';
@@ -41,8 +44,11 @@ import { logout } from './firebase';
 import { AuthForm } from './components/AuthForm';
 import LoginPage from './pages/LoginPage';
 import SignUpPage from './pages/SignUpPage';
+import PlansPage from './pages/PlansPage';
 import { AudioPlayer } from './components/AudioPlayer';
 import { MemorizationView } from './components/MemorizationView';
+import { BottomNav } from './components/BottomNav';
+import ProfilePage from './pages/ProfilePage';
 
 // --- Context for Audio ---
 import { createContext, useContext } from 'react';
@@ -64,72 +70,91 @@ const useAudio = () => {
 
 const Navbar = () => {
   const { user } = useAuth();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const navLinks = [
+    { label: 'Home', path: '/' },
+    { label: 'Memorize', path: '/memorize', icon: BrainCircuit },
+    { label: 'Plans', path: '/plans', icon: Target },
+    { label: 'Bookmarks', path: '/bookmarks', icon: BookmarkIcon },
+  ];
 
   return (
-    <nav className="sticky top-0 z-50 w-full border-b bg-white/80 backdrop-blur-md">
+    <nav className="sticky top-0 z-50 w-full border-b border-slate-200/80 bg-white/85 backdrop-blur-md">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link to="/" className="flex items-center gap-2 text-xl font-bold text-brand-primary">
-          <Book className="h-6 w-6" />
-          <span className="hidden sm:inline">Al-Quran Al-Kareem</span>
-          <span className="sm:hidden">Quran</span>
+        <Link to="/" className="flex items-center gap-2.5 text-xl font-bold text-brand-primary">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-primary text-white shadow-sm">
+            <Book className="h-5 w-5" />
+          </div>
+          <span className="tracking-tight">Al-Quran Al-Kareem</span>
         </Link>
 
-        <div className="hidden items-center gap-6 md:flex">
-          <Link to="/" className="text-sm font-medium hover:text-brand-primary">Home</Link>
-          <Link to="/memorize" className="text-sm font-medium hover:text-brand-primary flex items-center gap-1">
-            <BrainCircuit className="h-4 w-4" />
-            Memorize
-          </Link>
-          <Link to="/bookmarks" className="text-sm font-medium hover:text-brand-primary">Bookmarks</Link>
-          {user ? (
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-muted-foreground">{user.email}</span>
-              <Button variant="ghost" size="sm" onClick={logout}>
-                <LogOut className="mr-2 h-4 w-4" />
-                Logout
+        {/* Desktop Header Links */}
+        <div className="hidden items-center gap-2 md:flex">
+          {navLinks.map(link => {
+            const isActive = link.path === '/' 
+              ? location.pathname === '/' 
+              : location.pathname.startsWith(link.path);
+            const Icon = link.icon;
+
+            return (
+              <Link
+                key={link.path}
+                to={link.path}
+                className={`flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-xl transition-all ${
+                  isActive 
+                    ? "bg-brand-primary/10 text-brand-primary font-bold shadow-xs" 
+                    : "text-slate-600 hover:text-brand-primary hover:bg-slate-100/80"
+                }`}
+              >
+                {Icon && <Icon className={`h-4 w-4 ${isActive ? 'text-brand-primary' : ''}`} />}
+                <span>{link.label}</span>
+              </Link>
+            );
+          })}
+
+          <div className="ml-2 pl-2 border-l border-slate-200">
+            {user ? (
+              <div className="flex items-center gap-3">
+                <Link 
+                  to="/profile" 
+                  className={`flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-xl transition-colors ${
+                    location.pathname === '/profile' 
+                      ? 'bg-brand-primary text-white' 
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  <UserIcon className="h-3.5 w-3.5" />
+                  <span className="max-w-[120px] truncate">{user.email}</span>
+                </Link>
+                <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-red-600" onClick={logout}>
+                  <LogOut className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ) : (
+              <Button size="sm" className="bg-brand-primary hover:bg-brand-primary/90 rounded-xl font-bold" onClick={() => navigate('/login')}>
+                <UserIcon className="mr-1.5 h-4 w-4" />
+                Sign In
               </Button>
-            </div>
+            )}
+          </div>
+        </div>
+
+        {/* Mobile Header Profile Indicator */}
+        <div className="flex items-center gap-2 md:hidden">
+          {user ? (
+            <Link to="/profile" className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-primary text-white font-bold text-xs shadow-sm">
+              {user.email ? user.email[0].toUpperCase() : 'U'}
+            </Link>
           ) : (
-            <Button size="sm" onClick={() => navigate('/login')}>
-              <UserIcon className="mr-2 h-4 w-4" />
-              Login
+            <Button size="sm" variant="outline" className="h-9 rounded-xl text-xs font-semibold" onClick={() => navigate('/login')}>
+              <UserIcon className="h-3.5 w-3.5 mr-1" />
+              Sign In
             </Button>
           )}
         </div>
-
-        <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsMenuOpen(!isMenuOpen)}>
-          {isMenuOpen ? <X /> : <Menu />}
-        </Button>
       </div>
-
-      {/* Mobile Menu */}
-      <AnimatePresence>
-        {isMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="absolute left-0 top-16 w-full border-b bg-white p-4 md:hidden"
-          >
-            <div className="flex flex-col gap-4">
-              <Link to="/" onClick={() => setIsMenuOpen(false)} className="text-lg font-medium">Home</Link>
-              <Link to="/memorize" onClick={() => setIsMenuOpen(false)} className="text-lg font-medium">Memorize</Link>
-              <Link to="/bookmarks" onClick={() => setIsMenuOpen(false)} className="text-lg font-medium">Bookmarks</Link>
-              <hr />
-              {user ? (
-                <Button variant="ghost" onClick={() => { logout(); setIsMenuOpen(false); }}>Logout</Button>
-              ) : (
-                <Button onClick={() => { navigate('/login'); setIsMenuOpen(false); }}>
-                  <UserIcon className="mr-2 h-4 w-4" />
-                  Login
-                </Button>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </nav>
   );
 };
@@ -148,7 +173,7 @@ const SurahList = () => {
     });
   }, []);
 
-  const filteredSurahs = surahs.filter(s => 
+  const filteredSurahs = surahs.filter(s =>
     s.englishName.toLowerCase().includes(searchQuery.toLowerCase()) ||
     s.name.includes(searchQuery) ||
     s.number.toString() === searchQuery
@@ -165,62 +190,92 @@ const SurahList = () => {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-12">
+      {/* Home Hero Banner */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-primary via-emerald-800 to-teal-900 p-8 text-white shadow-xl md:p-10">
+        <div className="relative z-10 space-y-4 max-w-2xl">
+          <Badge variant="outline" className="border-white/20 text-white/90 bg-white/10 backdrop-blur-md">
+            <Sparkles className="h-3.5 w-3.5 mr-1 text-amber-300" /> The Holy Quran
+          </Badge>
+          <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight">
+            Al-Quran Al-Kareem
+          </h1>
+          <p className="text-white/80 text-sm md:text-base">
+            Read, listen to beautiful recitations, and memorize the Noble Quran with smart tools.
+          </p>
+
+          <div className="relative pt-2 max-w-md">
+            <Search className="absolute left-3.5 top-[calc(50%+4px)] h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              placeholder="Search Surah by name or number..."
+              className="pl-10 h-12 rounded-2xl border-none bg-white text-slate-900 shadow-lg placeholder:text-slate-400"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')} 
+                className="absolute right-3.5 top-[calc(50%+4px)] -translate-y-1/2 text-xs font-semibold text-slate-400 hover:text-slate-600"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Decorative background motifs */}
+        <div className="absolute -right-12 -bottom-12 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
+        <div className="absolute left-2/3 -top-12 h-48 w-48 rounded-full bg-white/5 blur-2xl" />
+      </div>
+
       {lastRead && (
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <Link to={`/surah/${lastRead.surahNumber}`}>
-            <Card className="border-none bg-brand-primary/5 shadow-none transition-all hover:bg-brand-primary/10">
-              <CardContent className="flex items-center justify-between p-6">
+          <Link to={`/surah/${lastRead.surahNumber}?ayah=${lastRead.ayahNumber}`}>
+            <Card className="border border-brand-primary/20 bg-emerald-500/5 shadow-sm transition-all hover:bg-emerald-500/10 hover:shadow-md rounded-2xl">
+              <CardContent className="flex items-center justify-between p-5 md:p-6">
                 <div className="flex items-center gap-4">
-                  <div className="rounded-full bg-brand-primary p-2 text-white">
+                  <div className="rounded-2xl bg-brand-primary p-3 text-white shadow-sm">
                     <History className="h-5 w-5" />
                   </div>
                   <div>
-                    <p className="text-xs font-medium text-brand-primary uppercase tracking-wider">Last Read</p>
-                    <h3 className="text-lg font-bold">{lastRead.surahName}</h3>
-                    <p className="text-sm text-muted-foreground">Ayah {lastRead.ayahNumber}</p>
+                    <p className="text-xs font-bold text-brand-primary uppercase tracking-wider">Continue Reading</p>
+                    <h3 className="text-lg font-bold text-slate-900">{lastRead.surahName}</h3>
+                    <p className="text-xs font-medium text-slate-500">Ayah {lastRead.ayahNumber}</p>
                   </div>
                 </div>
-                <ChevronRight className="h-6 w-6 text-brand-primary" />
+                <div className="flex items-center gap-1 text-sm font-semibold text-brand-primary">
+                  <span>Resume</span>
+                  <ChevronRight className="h-5 w-5" />
+                </div>
               </CardContent>
             </Card>
           </Link>
         </motion.div>
       )}
 
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input 
-          placeholder="Search Surah..." 
-          className="pl-10 h-12 rounded-xl border-none bg-white shadow-sm"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-      </div>
-
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {filteredSurahs.map((surah) => (
           <Link key={surah.number} to={`/surah/${surah.number}`}>
             <motion.div
-              whileHover={{ y: -4 }}
-              className="group relative overflow-hidden rounded-2xl border bg-white p-6 transition-all hover:shadow-lg"
+              whileHover={{ y: -3 }}
+              className="group relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-6 transition-all hover:shadow-lg hover:border-brand-primary/40"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-primary/10 text-brand-primary font-bold">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-primary/10 text-brand-primary font-bold text-sm">
                     {surah.number}
                   </div>
                   <div>
-                    <h3 className="font-bold group-hover:text-brand-primary">{surah.englishName}</h3>
-                    <p className="text-xs text-muted-foreground">{surah.englishNameTranslation}</p>
+                    <h3 className="font-bold text-slate-900 group-hover:text-brand-primary transition-colors">{surah.englishName}</h3>
+                    <p className="text-xs text-slate-500">{surah.englishNameTranslation}</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="quran-font text-2xl">{surah.name}</p>
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{surah.numberOfAyahs} Ayahs</p>
+                  <p className="quran-font text-2xl text-slate-800">{surah.name}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mt-0.5">{surah.numberOfAyahs} Ayahs</p>
                 </div>
               </div>
             </motion.div>
@@ -236,6 +291,8 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
   setRepeatAyah: React.Dispatch<React.SetStateAction<{ [ayahNumber: number]: boolean }>>;
 }) => {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [surah, setSurah] = useState<SurahDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
@@ -244,6 +301,26 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
   const [sequential, setSequential] = useState<{ active: boolean; index: number | null }>({ active: false, index: null });
   const ayahRefs = useRef<(HTMLDivElement | null)[]>([]);
 
+  const [highlightedAyah, setHighlightedAyah] = useState<number | null>(null);
+
+  const [activeAyahNumber, setActiveAyahNumber] = useState<number | null>(null);
+
+  const searchParams = new URLSearchParams(location.search);
+  const targetAyahParam = searchParams.get('ayah');
+  const targetAyahNumber = targetAyahParam ? parseInt(targetAyahParam, 10) : null;
+
+  useEffect(() => {
+    if (targetAyahNumber) {
+      setHighlightedAyah(targetAyahNumber);
+      const timer = setTimeout(() => {
+        setHighlightedAyah(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    } else {
+      setHighlightedAyah(null);
+    }
+  }, [targetAyahNumber, location.search]);
+
   useEffect(() => {
     if (id) {
       setLoading(true);
@@ -251,27 +328,54 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
         setSurah(data);
         setLoading(false);
         if (user) {
-          updateLastRead({
-            uid: user.uid,
-            surahNumber: data.number,
-            ayahNumber: 1,
-            surahName: data.englishName
-          });
+          const currentParams = new URLSearchParams(window.location.search);
+          const paramAyah = currentParams.get('ayah');
+          if (paramAyah) {
+            updateLastRead({
+              surahNumber: data.number,
+              ayahNumber: parseInt(paramAyah, 10),
+              surahName: data.englishName
+            });
+          }
         }
       });
     }
   }, [id, user]);
 
   useEffect(() => {
+    if (!loading && surah && targetAyahNumber) {
+      const idx = surah.ayahs.findIndex(a => a.numberInSurah === targetAyahNumber);
+      if (idx !== -1) {
+        const timer = setTimeout(() => {
+          ayahRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 250);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [loading, surah, targetAyahNumber]);
+
+  useEffect(() => {
     if (!sequential.active || sequential.index == null || !surah) return;
+    const currentAyah = surah.ayahs[sequential.index];
+    if (currentAyah) {
+      setActiveAyahNumber(currentAyah.numberInSurah);
+    }
     const handler = () => {
       if (sequential.active && sequential.index != null && !repeatAyah[surah.ayahs[sequential.index].numberInSurah]) {
         const nextIdx = sequential.index + 1;
         if (nextIdx < surah.ayahs.length) {
           const nextAyah = surah.ayahs[nextIdx];
           setSequential({ active: true, index: nextIdx });
+          setActiveAyahNumber(nextAyah.numberInSurah);
           const audioUrl = `https://cdn.islamic.network/quran/audio/128/ar.alafasy/${nextAyah.number}.mp3`;
           playAudio(audioUrl, surah.englishName, `Ayah ${nextAyah.numberInSurah}`);
+          if (user) {
+            updateLastRead({
+              surahNumber: surah.number,
+              ayahNumber: nextAyah.numberInSurah,
+              surahName: surah.englishName
+            });
+          }
         } else {
           setSequential({ active: false, index: null });
         }
@@ -279,19 +383,76 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
     };
     window.addEventListener('quran-audio-ended', handler);
     return () => window.removeEventListener('quran-audio-ended', handler);
-  }, [sequential, surah, playAudio, repeatAyah]);
+  }, [sequential, surah, playAudio, repeatAyah, user, updateLastRead]);
 
   useEffect(() => {
-    const handler = () => setSequential({ active: false, index: null });
+    const handler = (e: Event) => {
+      const customEvent = e as CustomEvent<{ repeat: boolean }>;
+      if (customEvent.detail) {
+        if (customEvent.detail.repeat) {
+          if (activeAyahNumber != null) {
+            setRepeatAyah({ [activeAyahNumber]: true });
+          }
+        } else {
+          setRepeatAyah({});
+        }
+      }
+    };
+    window.addEventListener('quran-repeat-changed', handler);
+    return () => window.removeEventListener('quran-repeat-changed', handler);
+  }, [setRepeatAyah, activeAyahNumber]);
+
+  useEffect(() => {
+    const handler = () => {
+      setSequential({ active: false, index: null });
+      setRepeatAyah({});
+      setActiveAyahNumber(null);
+    };
     window.addEventListener('quran-audio-close', handler);
     return () => window.removeEventListener('quran-audio-close', handler);
-  }, []);
+  }, [setRepeatAyah]);
 
   useEffect(() => {
     if (sequential.active && sequential.index != null && ayahRefs.current[sequential.index]) {
       ayahRefs.current[sequential.index]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [sequential]);
+
+  useEffect(() => {
+    if (loading || !surah || !user) return;
+
+    let debounceTimer: NodeJS.Timeout;
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const ayahNum = Number(entry.target.getAttribute('data-ayah-number'));
+          if (ayahNum) {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+              updateLastRead({
+                surahNumber: surah.number,
+                ayahNumber: ayahNum,
+                surahName: surah.englishName
+              });
+            }, 800);
+          }
+        }
+      });
+    }, {
+      rootMargin: '-20% 0px -50% 0px',
+      threshold: 0.5
+    });
+
+    ayahRefs.current.forEach(el => {
+      if (el) observer.observe(el);
+    });
+
+    return () => {
+      clearTimeout(debounceTimer);
+      observer.disconnect();
+    };
+  }, [loading, surah, user, updateLastRead]);
 
   if (loading) return <div className="space-y-4">
     <Skeleton className="h-40 w-full rounded-2xl" />
@@ -332,9 +493,18 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
         {surah.ayahs.map((ayah, idx) => {
           const isBookmarked = bookmarks.some(b => b.surahNumber === surah.number && b.ayahNumber === ayah.numberInSurah);
           const bookmarkId = bookmarks.find(b => b.surahNumber === surah.number && b.ayahNumber === ayah.numberInSurah)?.id;
+          const isTargetAyah = highlightedAyah === ayah.numberInSurah;
 
           return (
-            <Card key={ayah.number} className="overflow-hidden border-none bg-white/50 shadow-sm transition-all hover:bg-white" ref={el => { ayahRefs.current[idx] = el; }}>
+            <Card
+              key={ayah.number}
+              data-ayah-number={ayah.numberInSurah}
+              className={`overflow-hidden border-none transition-all duration-1000 ${isTargetAyah
+                  ? "bg-brand-primary/15 ring-2 ring-brand-primary/80 shadow-lg scale-[1.01]"
+                  : "bg-white/50 hover:bg-white shadow-sm"
+                }`}
+              ref={el => { ayahRefs.current[idx] = el; }}
+            >
               <CardContent className="p-6 md:p-8">
                 <div className="flex flex-col gap-6">
                   <div className="flex items-center justify-between">
@@ -342,11 +512,12 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
                       {ayah.numberInSurah}
                     </div>
                     <div className="flex gap-2">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="text-muted-foreground hover:text-brand-primary"
                         onClick={() => {
+                          setActiveAyahNumber(ayah.numberInSurah);
                           const audioUrl = `https://cdn.islamic.network/quran/audio/128/ar.alafasy/${ayah.number}.mp3`;
                           if (!repeatAyah[ayah.numberInSurah]) {
                             setSequential({ active: true, index: idx });
@@ -356,7 +527,6 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
                           }
                           if (user) {
                             updateLastRead({
-                              uid: user.uid,
                               surahNumber: surah.number,
                               ayahNumber: ayah.numberInSurah,
                               surahName: surah.englishName
@@ -371,40 +541,52 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
                         variant={repeatAyah[ayah.numberInSurah] ? "default" : "ghost"}
                         size="icon"
                         aria-label="Repeat infinitely"
-                        className={repeatAyah[ayah.numberInSurah] ? "bg-brand-primary text-white" : ""}
+                        className={
+                          repeatAyah[ayah.numberInSurah]
+                            ? "bg-brand-primary text-white shadow-sm hover:bg-brand-primary/90"
+                            : "text-muted-foreground hover:text-brand-primary"
+                        }
                         onClick={() => {
-                          setRepeatAyah(prev => {
-                            const newState = { ...prev, [ayah.numberInSurah]: !prev[ayah.numberInSurah] };
-                            // If enabling repeat, immediately play with repeat
-                            if (!prev[ayah.numberInSurah]) {
-                              const audioUrl = `https://cdn.islamic.network/quran/audio/128/ar.alafasy/${ayah.number}.mp3`;
-                              playAudio(
-                                audioUrl + '?repeat=1',
-                                surah.englishName,
-                                `Ayah ${ayah.numberInSurah}`
-                              );
-                            }
-                            return newState;
-                          });
+                          setActiveAyahNumber(ayah.numberInSurah);
+                          const isCurrentlyRepeating = !!repeatAyah[ayah.numberInSurah];
+                          const newRepeatState = !isCurrentlyRepeating;
+
+                          setRepeatAyah({ [ayah.numberInSurah]: newRepeatState });
+
+                          const audioUrl = `https://cdn.islamic.network/quran/audio/128/ar.alafasy/${ayah.number}.mp3`;
+
+                          if (newRepeatState) {
+                            setSequential({ active: false, index: null });
+                            playAudio(audioUrl + '?repeat=1', surah.englishName, `Ayah ${ayah.numberInSurah}`);
+                          } else {
+                            playAudio(audioUrl, surah.englishName, `Ayah ${ayah.numberInSurah}`);
+                          }
+
                           if (user) {
                             updateLastRead({
-                              uid: user.uid,
                               surahNumber: surah.number,
                               ayahNumber: ayah.numberInSurah,
                               surahName: surah.englishName
                             });
                           }
                         }}
-                        title="Repeat this Ayah infinitely"
+                        title={
+                          repeatAyah[ayah.numberInSurah]
+                            ? "Infinite loop active (Click to disable)"
+                            : "Repeat this Ayah infinitely"
+                        }
                       >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+                        <Repeat className={`h-4 w-4 ${repeatAyah[ayah.numberInSurah] ? "animate-pulse" : ""}`} />
                       </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className={isBookmarked ? "text-brand-primary" : "text-muted-foreground"}
                         onClick={() => {
-                          if (!user) return;
+                          if (!user) {
+                            navigate('/login');
+                            return;
+                          }
                           if (isBookmarked && bookmarkId) {
                             removeBookmark(bookmarkId);
                           } else {
@@ -412,12 +594,10 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
                               surahNumber: surah.number,
                               ayahNumber: ayah.numberInSurah,
                               surahName: surah.englishName,
-                              timestamp: Date.now(),
-                              uid: user.uid
+                              timestamp: Date.now()
                             });
                           }
                           updateLastRead({
-                            uid: user.uid,
                             surahNumber: surah.number,
                             ayahNumber: ayah.numberInSurah,
                             surahName: surah.englishName
@@ -428,7 +608,7 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
                       </Button>
                     </div>
                   </div>
-                  
+
                   <p className="quran-text text-right leading-relaxed">
                     {(() => {
                       let ayahText = ayah.text;
@@ -456,7 +636,7 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
                       return ayahText;
                     })()}
                   </p>
-                  
+
                   <div className="space-y-2">
                     <p className="text-sm text-muted-foreground leading-relaxed">
                       {ayah.translation}
@@ -476,40 +656,69 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
 const BookmarksView = () => {
   const { user } = useAuth();
   const { bookmarks, removeBookmark } = useFirestore(user?.uid);
+  const navigate = useNavigate();
 
   if (!user) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-        <BookmarkIcon className="h-16 w-16 text-muted-foreground opacity-20" />
-        <h2 className="text-2xl font-bold">Sign in to see your bookmarks</h2>
-        <AuthForm />
+      <div className="mx-auto max-w-md py-16 text-center space-y-6">
+        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-brand-primary/10 text-brand-primary">
+          <BookmarkIcon className="h-10 w-10" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-bold">Sign in for Bookmarks</h2>
+          <p className="text-sm text-muted-foreground">Sign in to save your favorite Ayahs and sync across all your devices.</p>
+        </div>
+        <Button className="bg-brand-primary hover:bg-brand-primary/90 px-6 py-5 rounded-xl font-bold" onClick={() => navigate('/login')}>
+          Sign In / Register
+        </Button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <h1 className="text-3xl font-bold">Your Bookmarks</h1>
+    <div className="space-y-8 pb-12">
+      {/* Bookmarks Hero Banner */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-primary via-emerald-800 to-teal-900 p-8 text-white shadow-xl md:p-10">
+        <div className="relative z-10 space-y-2">
+          <Badge variant="outline" className="border-white/20 text-white/90 bg-white/10 backdrop-blur-md">
+            <BookmarkIcon className="h-3.5 w-3.5 mr-1 text-amber-300" /> Saved Verses
+          </Badge>
+          <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight">Your Bookmarks ({bookmarks.length})</h1>
+          <p className="text-white/80 text-sm md:text-base">
+            Quickly jump back to your bookmarked Ayahs anytime.
+          </p>
+        </div>
+        <div className="absolute -right-10 -bottom-10 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
+      </div>
+
       {bookmarks.length === 0 ? (
-        <p className="text-muted-foreground">You haven't bookmarked any ayahs yet.</p>
+        <div className="flex flex-col items-center justify-center py-16 text-center space-y-4 border-2 border-dashed rounded-3xl bg-white/50">
+          <BookmarkIcon className="h-12 w-12 text-muted-foreground/30" />
+          <div>
+            <h3 className="text-lg font-bold">No bookmarks yet</h3>
+            <p className="text-sm text-muted-foreground max-w-sm">Click the bookmark icon on any Ayah while reading to save it here.</p>
+          </div>
+        </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {bookmarks.map((b) => (
-            <Card key={b.id} className="group relative overflow-hidden transition-all hover:shadow-md">
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <Link to={`/surah/${b.surahNumber}`} className="hover:text-brand-primary">
+            <Card key={b.id} className="group relative overflow-hidden transition-all hover:shadow-lg border-none bg-white rounded-2xl">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center justify-between text-lg">
+                  <Link to={`/surah/${b.surahNumber}?ayah=${b.ayahNumber}`} className="hover:text-brand-primary font-bold">
                     {b.surahName}
                   </Link>
-                  <Button variant="ghost" size="icon" onClick={() => removeBookmark(b.id)}>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-red-600" onClick={() => removeBookmark(b.id)}>
                     <X className="h-4 w-4" />
                   </Button>
                 </CardTitle>
-                <CardDescription>Ayah {b.ayahNumber}</CardDescription>
+                <CardDescription className="text-xs font-semibold text-brand-primary">
+                  Ayah {b.ayahNumber}
+                </CardDescription>
               </CardHeader>
-              <CardContent>
-                <Link to={`/surah/${b.surahNumber}`} className="text-sm text-brand-primary font-medium">
-                  Go to Ayah →
+              <CardContent className="pt-0">
+                <Link to={`/surah/${b.surahNumber}?ayah=${b.ayahNumber}`} className="text-xs text-brand-primary font-bold inline-flex items-center gap-1 hover:underline">
+                  Go to Ayah {b.ayahNumber} <ChevronRight className="h-3.5 w-3.5" />
                 </Link>
               </CardContent>
             </Card>
@@ -536,29 +745,32 @@ export default function App() {
       <Router>
         <div className="min-h-screen flex flex-col">
           <Navbar />
-          <main className="flex-1 container mx-auto px-4 py-8">
+          <main className="flex-1 container mx-auto px-4 py-8 pb-24 md:pb-8">
             <Routes>
               <Route path="/" element={<SurahList />} />
               <Route path="/surah/:id" element={<SurahView repeatAyah={repeatAyah} setRepeatAyah={setRepeatAyah} />} />
               <Route path="/bookmarks" element={<BookmarksView />} />
               <Route path="/memorize" element={<MemorizationView />} />
+              <Route path="/plans" element={<PlansPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignUpPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
             </Routes>
           </main>
-          <footer className="border-t bg-white py-8">
+          <footer className="border-t bg-white py-8 hidden md:block">
             <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
               <p>© {new Date().getFullYear()} Al-Quran Al-Kareem. Built with peace and devotion.</p>
             </div>
           </footer>
+          <BottomNav />
           <AnimatePresence>
             {audioData && (
-              <AudioPlayer 
-                {...audioData} 
+              <AudioPlayer
+                {...audioData}
                 onClose={() => {
                   setAudioData(null);
                   resetRepeatAyah();
-                }} 
+                }}
               />
             )}
           </AnimatePresence>
