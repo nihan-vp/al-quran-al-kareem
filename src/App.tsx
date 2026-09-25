@@ -4,9 +4,8 @@
  */
 
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useParams, useLocation } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useRef } from 'react';
 import {
   Book,
   Search,
@@ -24,8 +23,10 @@ import {
   Volume2,
   BrainCircuit,
   Repeat,
+  Repeat1,
   Target,
-  Sparkles
+  Sparkles,
+  Headphones
 } from 'lucide-react';
 
 import { Button } from '../components/ui/button';
@@ -49,22 +50,7 @@ import { AudioPlayer } from './components/AudioPlayer';
 import { MemorizationView } from './components/MemorizationView';
 import { BottomNav } from './components/BottomNav';
 import ProfilePage from './pages/ProfilePage';
-
-// --- Context for Audio ---
-import { createContext, useContext } from 'react';
-
-interface AudioContextType {
-  playAudio: (src: string, title: string, subtitle: string) => void;
-}
-
-const AudioContext = createContext<AudioContextType | null>(null);
-
-const useAudio = () => {
-  const context = useContext(AudioContext);
-  if (!context) throw new Error('useAudio must be used within AudioProvider');
-  return context;
-};
-
+import { AudioProvider, useAudio } from './contexts/AudioContext';
 
 // --- Components ---
 
@@ -201,7 +187,7 @@ const SurahList = () => {
             Al-Quran Al-Kareem
           </h1>
           <p className="text-white/80 text-sm md:text-base">
-            Read, listen to beautiful recitations, and memorize the Noble Quran with smart tools.
+            Read, listen to beautiful recitations with background audio, and memorize the Noble Quran with smart tools.
           </p>
 
           <div className="relative pt-2 max-w-md">
@@ -286,10 +272,7 @@ const SurahList = () => {
   );
 };
 
-const SurahView = ({ repeatAyah, setRepeatAyah }: {
-  repeatAyah: { [ayahNumber: number]: boolean };
-  setRepeatAyah: React.Dispatch<React.SetStateAction<{ [ayahNumber: number]: boolean }>>;
-}) => {
+const SurahView = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -297,13 +280,19 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const { bookmarks, addBookmark, removeBookmark, updateLastRead } = useFirestore(user?.uid);
-  const { playAudio } = useAudio();
-  const [sequential, setSequential] = useState<{ active: boolean; index: number | null }>({ active: false, index: null });
+  
+  const {
+    playSurahAyahs,
+    isPlaying,
+    activeSurahNumber,
+    activeAyahNumber,
+    repeatMode,
+    togglePlay,
+    setRepeatMode
+  } = useAudio();
+
   const ayahRefs = useRef<(HTMLDivElement | null)[]>([]);
-
   const [highlightedAyah, setHighlightedAyah] = useState<number | null>(null);
-
-  const [activeAyahNumber, setActiveAyahNumber] = useState<number | null>(null);
 
   const searchParams = new URLSearchParams(location.search);
   const targetAyahParam = searchParams.get('ayah');
@@ -342,6 +331,7 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
     }
   }, [id, user]);
 
+  // Scroll to target ayah on load
   useEffect(() => {
     if (!loading && surah && targetAyahNumber) {
       const idx = surah.ayahs.findIndex(a => a.numberInSurah === targetAyahNumber);
@@ -354,70 +344,17 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
     }
   }, [loading, surah, targetAyahNumber]);
 
+  // Smooth scroll to actively playing ayah during background/foreground playback
   useEffect(() => {
-    if (!sequential.active || sequential.index == null || !surah) return;
-    const currentAyah = surah.ayahs[sequential.index];
-    if (currentAyah) {
-      setActiveAyahNumber(currentAyah.numberInSurah);
-    }
-    const handler = () => {
-      if (sequential.active && sequential.index != null && !repeatAyah[surah.ayahs[sequential.index].numberInSurah]) {
-        const nextIdx = sequential.index + 1;
-        if (nextIdx < surah.ayahs.length) {
-          const nextAyah = surah.ayahs[nextIdx];
-          setSequential({ active: true, index: nextIdx });
-          setActiveAyahNumber(nextAyah.numberInSurah);
-          const audioUrl = `https://cdn.islamic.network/quran/audio/128/ar.alafasy/${nextAyah.number}.mp3`;
-          playAudio(audioUrl, surah.englishName, `Ayah ${nextAyah.numberInSurah}`);
-          if (user) {
-            updateLastRead({
-              surahNumber: surah.number,
-              ayahNumber: nextAyah.numberInSurah,
-              surahName: surah.englishName
-            });
-          }
-        } else {
-          setSequential({ active: false, index: null });
-        }
+    if (surah && activeSurahNumber === surah.number && activeAyahNumber != null) {
+      const idx = surah.ayahs.findIndex(a => a.numberInSurah === activeAyahNumber);
+      if (idx !== -1 && ayahRefs.current[idx]) {
+        ayahRefs.current[idx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-    };
-    window.addEventListener('quran-audio-ended', handler);
-    return () => window.removeEventListener('quran-audio-ended', handler);
-  }, [sequential, surah, playAudio, repeatAyah, user, updateLastRead]);
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const customEvent = e as CustomEvent<{ repeat: boolean }>;
-      if (customEvent.detail) {
-        if (customEvent.detail.repeat) {
-          if (activeAyahNumber != null) {
-            setRepeatAyah({ [activeAyahNumber]: true });
-          }
-        } else {
-          setRepeatAyah({});
-        }
-      }
-    };
-    window.addEventListener('quran-repeat-changed', handler);
-    return () => window.removeEventListener('quran-repeat-changed', handler);
-  }, [setRepeatAyah, activeAyahNumber]);
-
-  useEffect(() => {
-    const handler = () => {
-      setSequential({ active: false, index: null });
-      setRepeatAyah({});
-      setActiveAyahNumber(null);
-    };
-    window.addEventListener('quran-audio-close', handler);
-    return () => window.removeEventListener('quran-audio-close', handler);
-  }, [setRepeatAyah]);
-
-  useEffect(() => {
-    if (sequential.active && sequential.index != null && ayahRefs.current[sequential.index]) {
-      ayahRefs.current[sequential.index]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [sequential]);
+  }, [surah, activeSurahNumber, activeAyahNumber]);
 
+  // Intersection observer for tracking last read position
   useEffect(() => {
     if (loading || !surah || !user) return;
 
@@ -463,8 +400,11 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
 
   if (!surah) return <div>Surah not found</div>;
 
+  const isCurrentSurahPlaying = isPlaying && activeSurahNumber === surah.number;
+
   return (
     <div className="mx-auto max-w-4xl space-y-8">
+      {/* Surah Hero Card */}
       <div className="relative overflow-hidden rounded-3xl bg-brand-primary p-8 text-white shadow-xl md:p-12">
         <div className="relative z-10 flex flex-col items-center text-center space-y-4">
           <Badge variant="outline" className="border-white/20 text-white/80">Surah {surah.number}</Badge>
@@ -476,6 +416,35 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
             <span>{surah.revelationType}</span>
             <span>•</span>
             <span>{surah.numberOfAyahs} Ayahs</span>
+          </div>
+
+          {/* Quick Play Surah Button */}
+          <div className="pt-2">
+            <Button
+              className="bg-white text-brand-primary hover:bg-white/90 font-bold px-6 py-5 rounded-2xl shadow-lg flex items-center gap-2"
+              onClick={() => {
+                if (isCurrentSurahPlaying) {
+                  togglePlay();
+                } else {
+                  playSurahAyahs({
+                    surahNumber: surah.number,
+                    surahName: surah.englishName,
+                    ayahs: surah.ayahs,
+                    startIndex: 0
+                  });
+                }
+              }}
+            >
+              {isCurrentSurahPlaying ? (
+                <>
+                  <Pause className="h-4 w-4" /> Pause Recitation
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4 fill-current" /> Play Full Surah (Background)
+                </>
+              )}
+            </Button>
           </div>
         </div>
         {/* Decorative elements */}
@@ -494,36 +463,57 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
           const isBookmarked = bookmarks.some(b => b.surahNumber === surah.number && b.ayahNumber === ayah.numberInSurah);
           const bookmarkId = bookmarks.find(b => b.surahNumber === surah.number && b.ayahNumber === ayah.numberInSurah)?.id;
           const isTargetAyah = highlightedAyah === ayah.numberInSurah;
+          const isThisAyahActive = activeSurahNumber === surah.number && activeAyahNumber === ayah.numberInSurah;
+          const isThisAyahPlaying = isThisAyahActive && isPlaying;
+          const isThisAyahRepeating = isThisAyahActive && repeatMode === 'one';
 
           return (
             <Card
               key={ayah.number}
               data-ayah-number={ayah.numberInSurah}
-              className={`overflow-hidden border-none transition-all duration-1000 ${isTargetAyah
+              className={`overflow-hidden border-none transition-all duration-700 ${
+                isThisAyahPlaying
+                  ? "bg-brand-primary/10 ring-2 ring-brand-primary shadow-md scale-[1.01]"
+                  : isTargetAyah
                   ? "bg-brand-primary/15 ring-2 ring-brand-primary/80 shadow-lg scale-[1.01]"
                   : "bg-white/50 hover:bg-white shadow-sm"
-                }`}
+              }`}
               ref={el => { ayahRefs.current[idx] = el; }}
             >
               <CardContent className="p-6 md:p-8">
                 <div className="flex flex-col gap-6">
                   <div className="flex items-center justify-between">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-primary/10 text-xs font-bold text-brand-primary">
-                      {ayah.numberInSurah}
+                    <div className="flex items-center gap-2">
+                      <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
+                        isThisAyahPlaying
+                          ? "bg-brand-primary text-white"
+                          : "bg-brand-primary/10 text-brand-primary"
+                      }`}>
+                        {ayah.numberInSurah}
+                      </div>
+                      {isThisAyahPlaying && (
+                        <Badge variant="outline" className="border-brand-primary/30 text-brand-primary bg-brand-primary/10 text-[10px] animate-pulse">
+                          Now Playing
+                        </Badge>
+                      )}
                     </div>
+
                     <div className="flex gap-2">
+                      {/* Play / Pause Ayah */}
                       <Button
-                        variant="ghost"
+                        variant={isThisAyahPlaying ? "default" : "ghost"}
                         size="icon"
-                        className="text-muted-foreground hover:text-brand-primary"
+                        className={isThisAyahPlaying ? "bg-brand-primary text-white" : "text-muted-foreground hover:text-brand-primary"}
                         onClick={() => {
-                          setActiveAyahNumber(ayah.numberInSurah);
-                          const audioUrl = `https://cdn.islamic.network/quran/audio/128/ar.alafasy/${ayah.number}.mp3`;
-                          if (!repeatAyah[ayah.numberInSurah]) {
-                            setSequential({ active: true, index: idx });
-                            playAudio(audioUrl, surah.englishName, `Ayah ${ayah.numberInSurah}`);
+                          if (isThisAyahPlaying) {
+                            togglePlay();
                           } else {
-                            playAudio(audioUrl + '?repeat=1', surah.englishName, `Ayah ${ayah.numberInSurah}`);
+                            playSurahAyahs({
+                              surahNumber: surah.number,
+                              surahName: surah.englishName,
+                              ayahs: surah.ayahs,
+                              startIndex: idx
+                            });
                           }
                           if (user) {
                             updateLastRead({
@@ -533,35 +523,33 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
                             });
                           }
                         }}
-                        title="Play Ayah"
+                        title={isThisAyahPlaying ? "Pause Audio" : "Play from this Ayah"}
                       >
-                        <Volume2 className="h-5 w-5" />
+                        {isThisAyahPlaying ? <Pause className="h-4 w-4" /> : <Volume2 className="h-5 w-5" />}
                       </Button>
+
+                      {/* Repeat Ayah Loop */}
                       <Button
-                        variant={repeatAyah[ayah.numberInSurah] ? "default" : "ghost"}
+                        variant={isThisAyahRepeating ? "default" : "ghost"}
                         size="icon"
                         aria-label="Repeat infinitely"
                         className={
-                          repeatAyah[ayah.numberInSurah]
+                          isThisAyahRepeating
                             ? "bg-brand-primary text-white shadow-sm hover:bg-brand-primary/90"
                             : "text-muted-foreground hover:text-brand-primary"
                         }
                         onClick={() => {
-                          setActiveAyahNumber(ayah.numberInSurah);
-                          const isCurrentlyRepeating = !!repeatAyah[ayah.numberInSurah];
-                          const newRepeatState = !isCurrentlyRepeating;
-
-                          setRepeatAyah({ [ayah.numberInSurah]: newRepeatState });
-
-                          const audioUrl = `https://cdn.islamic.network/quran/audio/128/ar.alafasy/${ayah.number}.mp3`;
-
-                          if (newRepeatState) {
-                            setSequential({ active: false, index: null });
-                            playAudio(audioUrl + '?repeat=1', surah.englishName, `Ayah ${ayah.numberInSurah}`);
+                          if (isThisAyahRepeating) {
+                            setRepeatMode('none');
                           } else {
-                            playAudio(audioUrl, surah.englishName, `Ayah ${ayah.numberInSurah}`);
+                            playSurahAyahs({
+                              surahNumber: surah.number,
+                              surahName: surah.englishName,
+                              ayahs: surah.ayahs,
+                              startIndex: idx,
+                              repeatAyahOnly: true
+                            });
                           }
-
                           if (user) {
                             updateLastRead({
                               surahNumber: surah.number,
@@ -571,13 +559,15 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
                           }
                         }}
                         title={
-                          repeatAyah[ayah.numberInSurah]
-                            ? "Infinite loop active (Click to disable)"
-                            : "Repeat this Ayah infinitely"
+                          isThisAyahRepeating
+                            ? "Ayah repeat loop active (Click to disable)"
+                            : "Repeat this Ayah in loop"
                         }
                       >
-                        <Repeat className={`h-4 w-4 ${repeatAyah[ayah.numberInSurah] ? "animate-pulse" : ""}`} />
+                        <Repeat1 className={`h-4 w-4 ${isThisAyahRepeating ? "animate-pulse" : ""}`} />
                       </Button>
+
+                      {/* Bookmark Button */}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -617,17 +607,12 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
                         surah.number !== 1 &&
                         surah.number !== 9
                       ) {
-                        // Remove all forms of Bismillah with optional whitespace, newlines, alternate spellings, and diacritics
-                        // Match exact Bismillah with all possible Unicode forms (ٱ, invisible chars, etc)
                         const bismillahRegex = /^[\s\n\r\u200C\u200F\u202A\u202B\u202C]*بِسْمِ[\s\n\r\u200C\u200F\u202A\u202B\u202C]*[اٱ]للّ?ه[\s\n\r\u200C\u200F\u202A\u202B\u202C]*[اٱ]لرَّ?حْمَٰ?نِ[\s\n\r\u200C\u200F\u202A\u202B\u202C]*[اٱ]لرَّ?حِيمِ[\s\n\r\u200C\u200F\u202A\u202B\u202C]*[\n\r]*/u;
                         const newAyahText = ayahText.replace(bismillahRegex, '').trimStart();
                         if (ayahText === newAyahText) {
-                          // Try fallback: remove just the exact visible string
                           const fallback = 'بِسْمِ ٱللَّهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ';
                           if (ayahText.startsWith(fallback)) {
                             ayahText = ayahText.slice(fallback.length).trimStart();
-                          } else {
-                            console.warn('Bismillah not removed:', ayahText);
                           }
                         } else {
                           ayahText = newAyahText;
@@ -651,7 +636,6 @@ const SurahView = ({ repeatAyah, setRepeatAyah }: {
     </div>
   );
 };
-
 
 const BookmarksView = () => {
   const { user } = useAuth();
@@ -732,23 +716,15 @@ const BookmarksView = () => {
 // --- Main App ---
 
 export default function App() {
-  const [audioData, setAudioData] = useState<{ src: string; title: string; subtitle: string } | null>(null);
-  const [repeatAyah, setRepeatAyah] = useState<{ [ayahNumber: number]: boolean }>({});
-  const resetRepeatAyah = () => setRepeatAyah({});
-
-  const playAudio = (src: string, title: string, subtitle: string) => {
-    setAudioData({ src, title, subtitle });
-  };
-
   return (
-    <AudioContext.Provider value={{ playAudio }}>
+    <AudioProvider>
       <Router>
         <div className="min-h-screen flex flex-col">
           <Navbar />
-          <main className="flex-1 container mx-auto px-4 py-8 pb-24 md:pb-8">
+          <main className="flex-1 container mx-auto px-4 py-8 pb-28 md:pb-12">
             <Routes>
               <Route path="/" element={<SurahList />} />
-              <Route path="/surah/:id" element={<SurahView repeatAyah={repeatAyah} setRepeatAyah={setRepeatAyah} />} />
+              <Route path="/surah/:id" element={<SurahView />} />
               <Route path="/bookmarks" element={<BookmarksView />} />
               <Route path="/memorize" element={<MemorizationView />} />
               <Route path="/plans" element={<PlansPage />} />
@@ -764,19 +740,10 @@ export default function App() {
           </footer>
           <BottomNav />
           <AnimatePresence>
-            {audioData && (
-              <AudioPlayer
-                {...audioData}
-                onClose={() => {
-                  setAudioData(null);
-                  resetRepeatAyah();
-                }}
-              />
-            )}
+            <AudioPlayer />
           </AnimatePresence>
         </div>
       </Router>
-    </AudioContext.Provider>
+    </AudioProvider>
   );
 }
-

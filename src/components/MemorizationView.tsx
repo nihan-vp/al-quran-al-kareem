@@ -87,13 +87,12 @@ export function MemorizationView() {
     }
   }, [repeatOneAyah, startAyah]);
 
-  const playback = useMemorizationPlayback(ayahs, repeatCount, playMeaning, settings);
+  const currentSurah = surahs.find(s => s.number === selectedSurah);
+  const playback = useMemorizationPlayback(ayahs, repeatCount, playMeaning, settings, currentSurah?.englishName);
 
   useEffect(() => {
     quranService.getSurahs().then(setSurahs);
   }, []);
-
-  const currentSurah = surahs.find(s => s.number === selectedSurah);
 
   const [saveSuccess, setSaveSuccess] = useState(false);
 

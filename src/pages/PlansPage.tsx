@@ -69,7 +69,7 @@ function PlanPlayerModal({ plan, onClose }: PlanPlayerProps) {
       });
   }, [plan]);
 
-  const playback = useMemorizationPlayback(ayahs, repeatCount, playMeaning, settings);
+  const playback = useMemorizationPlayback(ayahs, repeatCount, playMeaning, settings, plan.surahName);
   const activeAyah = ayahs[playback.currentAyahIndex];
 
   return (

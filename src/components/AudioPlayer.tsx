@@ -3,161 +3,263 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipBack, SkipForward, X, Repeat } from 'lucide-react';
+import { useState } from 'react';
+import { 
+  Play, 
+  Pause, 
+  SkipBack, 
+  SkipForward, 
+  X, 
+  Repeat, 
+  Repeat1, 
+  RotateCcw, 
+  RotateCw,
+  Volume2,
+  Gauge,
+  Sparkles,
+  Headphones
+} from 'lucide-react';
 import { motion } from 'motion/react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { Badge } from '@/components/ui/badge';
+import { useAudio, RepeatMode } from '@/contexts/AudioContext';
 
-interface AudioPlayerProps {
-  src: string;
-  title: string;
-  subtitle: string;
-  onClose: () => void;
-}
+const formatTime = (seconds: number): string => {
+  if (isNaN(seconds) || seconds < 0) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+};
 
-export function AudioPlayer({ src, title, subtitle, onClose }: AudioPlayerProps) {
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const initialRepeat = typeof src === 'string' && src.includes('?repeat=1');
-  const [repeat, setRepeat] = useState(initialRepeat);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+export function AudioPlayer() {
+  const {
+    currentTrack,
+    isPlaying,
+    progress,
+    duration,
+    playbackSpeed,
+    repeatMode,
+    togglePlay,
+    nextTrack,
+    prevTrack,
+    seekTo,
+    seekBy,
+    setPlaybackSpeed,
+    toggleRepeatMode,
+    closePlayer,
+    isPlayerVisible
+  } = useAudio();
 
-  // Sync repeat state whenever src changes
-  useEffect(() => {
-    const isRepeatSrc = typeof src === 'string' && src.includes('?repeat=1');
-    setRepeat(isRepeatSrc);
-  }, [src]);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
 
-  // Keep HTML5 audio loop property synced with repeat state
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.loop = repeat;
-    }
-    // Broadcast repeat change to keep cards in sync
-    window.dispatchEvent(new CustomEvent('quran-repeat-changed', { detail: { repeat } }));
-  }, [repeat]);
+  if (!isPlayerVisible || !currentTrack) {
+    return null;
+  }
 
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-    }
-  }, [src]);
-
-  const togglePlay = () => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-      } else {
-        audioRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
-
-  const handleTimeUpdate = () => {
-    if (audioRef.current) {
-      setProgress(audioRef.current.currentTime);
-    }
-  };
-
-  const handleLoadedMetadata = () => {
-    if (audioRef.current) {
-      setDuration(audioRef.current.duration);
-    }
-  };
-
-  const handleSliderChange = (value: number | readonly number[]) => {
-    const v = Array.isArray(value) ? value[0] : value;
-    if (audioRef.current) {
-      audioRef.current.currentTime = v;
-      setProgress(v);
-    }
-  };
+  const speedOptions = [0.75, 1, 1.25, 1.5, 2];
 
   return (
     <motion.div
-      initial={{ y: 100, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      exit={{ y: 100, opacity: 0 }}
-      className="fixed bottom-20 left-1/2 z-50 w-[90%] max-w-md -translate-x-1/2 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/95 p-4 shadow-2xl backdrop-blur-xl md:bottom-10"
+      initial={{ y: 80, opacity: 0, scale: 0.96 }}
+      animate={{ y: 0, opacity: 1, scale: 1 }}
+      exit={{ y: 80, opacity: 0, scale: 0.96 }}
+      transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+      className="fixed bottom-20 left-1/2 z-50 w-[94%] max-w-lg -translate-x-1/2 overflow-hidden rounded-3xl border border-slate-200/90 bg-white/95 p-4 shadow-2xl backdrop-blur-2xl dark:border-slate-800 dark:bg-slate-900/95 md:bottom-8"
     >
-      <audio
-        ref={audioRef}
-        src={src}
-        onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={handleLoadedMetadata}
-        onEnded={() => {
-          if (repeat && audioRef.current) {
-            audioRef.current.currentTime = 0;
-            audioRef.current.play();
-            setIsPlaying(true);
-          } else {
-            setIsPlaying(false);
-            window.dispatchEvent(new Event('quran-audio-ended'));
-          }
-        }}
-      />
+      {/* Background audio glow indicator line */}
+      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600 animate-pulse" />
 
       <div className="flex flex-col gap-3">
-        <div className="flex items-center justify-between">
-          <div className="flex flex-col overflow-hidden">
-            <h4 className="truncate text-sm font-bold">{title}</h4>
-            <p className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
-              <span>{subtitle}</span>
-              {repeat && (
-                <span className="inline-flex items-center gap-0.5 rounded bg-brand-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-brand-primary">
-                  <Repeat className="h-3 w-3" /> Infinite Loop
-                </span>
-              )}
-            </p>
+        {/* Track Title & Background Status Header */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-primary/10 text-brand-primary">
+              <Headphones className={`h-5 w-5 ${isPlaying ? 'animate-bounce' : ''}`} />
+            </div>
+
+            <div className="flex flex-col overflow-hidden">
+              <div className="flex items-center gap-1.5">
+                <h4 className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
+                  {currentTrack.title}
+                </h4>
+                {/* Background playing active badge */}
+                <Badge
+                  variant="outline"
+                  className="hidden sm:inline-flex items-center gap-1 border-emerald-300 bg-emerald-50 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                >
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-ping" />
+                  Background Active
+                </Badge>
+              </div>
+
+              <p className="truncate text-xs text-muted-foreground flex items-center gap-1.5">
+                <span>{currentTrack.subtitle || currentTrack.reciterName}</span>
+                {repeatMode === 'one' && (
+                  <span className="inline-flex items-center gap-0.5 rounded bg-brand-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-brand-primary">
+                    <Repeat1 className="h-3 w-3" /> Ayah Loop
+                  </span>
+                )}
+                {repeatMode === 'surah' && (
+                  <span className="inline-flex items-center gap-0.5 rounded bg-brand-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-brand-primary">
+                    <Repeat className="h-3 w-3" /> Surah Loop
+                  </span>
+                )}
+              </p>
+            </div>
           </div>
-          <Button 
-            variant="ghost" 
-            size="icon" 
-            className="h-8 w-8 text-muted-foreground hover:text-slate-900" 
-            onClick={() => {
-              if (onClose) onClose();
-              window.dispatchEvent(new Event('quran-audio-close'));
-            }}
-          >
-            <X className="h-4 w-4" />
-          </Button>
+
+          <div className="flex items-center gap-1">
+            {/* Speed Control Toggle */}
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-xs font-semibold text-slate-600 hover:text-brand-primary"
+                onClick={() => setShowSpeedMenu(prev => !prev)}
+                title="Playback Speed"
+              >
+                <Gauge className="h-3.5 w-3.5 mr-1" />
+                {playbackSpeed}x
+              </Button>
+
+              {showSpeedMenu && (
+                <div className="absolute right-0 bottom-full mb-2 flex flex-col gap-1 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+                  {speedOptions.map(s => (
+                    <button
+                      key={s}
+                      onClick={() => {
+                        setPlaybackSpeed(s);
+                        setShowSpeedMenu(false);
+                      }}
+                      className={`px-3 py-1 rounded-xl text-xs font-medium transition-colors text-left ${
+                        playbackSpeed === s
+                          ? 'bg-brand-primary text-white font-bold'
+                          : 'hover:bg-slate-100 text-slate-700 dark:text-slate-200'
+                      }`}
+                    >
+                      {s}x
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Close Button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-slate-900 rounded-xl"
+              onClick={closePlayer}
+              title="Close Player"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
-        <Slider
-          value={[progress]}
-          max={duration || 100}
-          step={0.1}
-          onValueChange={handleSliderChange}
-          className="my-1"
-        />
+        {/* Progress Slider & Timestamps */}
+        <div className="space-y-1">
+          <Slider
+            value={[progress]}
+            max={duration || 100}
+            step={0.1}
+            onValueChange={(val) => {
+              const v = Array.isArray(val) ? val[0] : val;
+              seekTo(v);
+            }}
+            className="my-1 cursor-pointer"
+          />
+          <div className="flex justify-between text-[11px] font-semibold text-slate-400">
+            <span>{formatTime(progress)}</span>
+            <span>{formatTime(duration)}</span>
+          </div>
+        </div>
 
-        <div className="flex items-center justify-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => { if (audioRef.current) audioRef.current.currentTime -= 5; }}>
-            <SkipBack className="h-5 w-5" />
-          </Button>
-          <Button 
-            size="icon" 
-            className="h-12 w-12 rounded-full bg-brand-primary text-white shadow-md hover:bg-brand-primary/90" 
-            onClick={togglePlay}
-          >
-            {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6 fill-current" />}
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => { if (audioRef.current) audioRef.current.currentTime += 5; }}>
-            <SkipForward className="h-5 w-5" />
-          </Button>
+        {/* Playback Controls */}
+        <div className="flex items-center justify-between pt-1">
+          {/* Repeat Mode Cycle */}
           <Button
-            variant={repeat ? "default" : "ghost"}
+            variant={repeatMode !== 'none' ? 'default' : 'ghost'}
             size="icon"
-            aria-label="Toggle infinite repeat"
-            className={repeat ? "bg-brand-primary text-white shadow-sm" : "text-muted-foreground hover:text-brand-primary"}
-            onClick={() => setRepeat(prev => !prev)}
-            title={repeat ? "Infinite repeat enabled (Click to disable)" : "Enable infinite repeat loop"}
+            className={`h-9 w-9 rounded-xl ${
+              repeatMode !== 'none'
+                ? 'bg-brand-primary text-white shadow-sm'
+                : 'text-muted-foreground hover:text-brand-primary'
+            }`}
+            onClick={toggleRepeatMode}
+            title={
+              repeatMode === 'none'
+                ? 'Repeat: Off (Click for Ayah loop)'
+                : repeatMode === 'one'
+                ? 'Repeat: Current Ayah (Click for Surah loop)'
+                : 'Repeat: Entire Surah (Click to turn off)'
+            }
           >
-            <Repeat className="h-5 w-5" />
+            {repeatMode === 'one' ? <Repeat1 className="h-4 w-4" /> : <Repeat className="h-4 w-4" />}
           </Button>
+
+          <div className="flex items-center gap-2">
+            {/* Previous Ayah / Track */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 text-slate-700 hover:text-brand-primary rounded-xl"
+              onClick={prevTrack}
+              title="Previous Ayah"
+            >
+              <SkipBack className="h-4 w-4" />
+            </Button>
+
+            {/* Seek -5s */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-slate-500 hover:text-slate-900 rounded-xl"
+              onClick={() => seekBy(-5)}
+              title="Seek back 5 seconds"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </Button>
+
+            {/* Main Play / Pause Button */}
+            <Button
+              size="icon"
+              className="h-12 w-12 rounded-full bg-brand-primary text-white shadow-lg shadow-brand-primary/25 hover:bg-brand-primary/90 transition-transform active:scale-95"
+              onClick={togglePlay}
+              title={isPlaying ? 'Pause' : 'Play'}
+            >
+              {isPlaying ? (
+                <Pause className="h-5 w-5" />
+              ) : (
+                <Play className="h-5 w-5 fill-current ml-0.5" />
+              )}
+            </Button>
+
+            {/* Seek +5s */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-slate-500 hover:text-slate-900 rounded-xl"
+              onClick={() => seekBy(5)}
+              title="Seek forward 5 seconds"
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+            </Button>
+
+            {/* Next Ayah / Track */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 text-slate-700 hover:text-brand-primary rounded-xl"
+              onClick={nextTrack}
+              title="Next Ayah"
+            >
+              <SkipForward className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="w-9" />
         </div>
       </div>
     </motion.div>
