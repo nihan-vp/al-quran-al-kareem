@@ -4,6 +4,8 @@
  */
 
 import { Surah, SurahDetail, Ayah } from '../types';
+import { quranAudioService } from './quranAudioService';
+import { DEFAULT_RECITER_ID } from '../constants/reciters';
 
 const BASE_URL = 'https://api.alquran.cloud/v1';
 
@@ -44,9 +46,29 @@ export const quranService = {
     return data.data;
   },
 
-  // Helper to get Malayalam audio URL per ayah
+  // Audio helper methods
+  getAyahAudioUrl(globalAyahNumber: number, reciter: string = DEFAULT_RECITER_ID): string {
+    return quranAudioService.getAyahAudioUrl(globalAyahNumber, reciter);
+  },
+
+  getEveryAyahAudioUrl(surah: number, ayah: number, reciter: string = DEFAULT_RECITER_ID): string {
+    return quranAudioService.getEveryAyahAudioUrl(surah, ayah, reciter);
+  },
+
   getMalayalamAudioUrl(surah: number, ayah: number): string {
-    return `https://lalithasaram.net/audio/qtaud/transl/${surah}_${ayah}.ogg`;
+    return quranAudioService.getMalayalamAudioUrl(surah, ayah);
+  },
+
+  getEnglishAudioUrl(globalAyahNumber: number): string {
+    return quranAudioService.getEnglishAudioUrl(globalAyahNumber);
+  },
+
+  getUrduAudioUrl(globalAyahNumber: number): string {
+    return quranAudioService.getUrduAudioUrl(globalAyahNumber);
+  },
+
+  getFullSurahStreamUrl(surahNumber: number, reciter: string = DEFAULT_RECITER_ID): string {
+    return quranAudioService.getFullSurahStreamUrl(surahNumber, reciter);
   },
 
   async getAyahsRange(
@@ -59,16 +81,14 @@ export const quranService = {
     const response = await fetch(`${BASE_URL}/surah/${surahNumber}/editions/${editionsStr}`);
     const data = await response.json();
 
-    // The API returns an array of surah objects for each edition
     const surahs = data.data;
     const baseAyahs = surahs[0].ayahs.slice(start - 1, end);
 
     return baseAyahs.map((ayah: any, idx: number) => {
       const result: any = { ...ayah };
-      // Always set surahNumber and numberInSurah
       result.surahNumber = result.surahNumber || surahNumber;
       result.numberInSurah = result.numberInSurah || (idx + (start || 1));
-      // Add translations from other editions by matching numberInSurah
+      
       surahs.slice(1).forEach((editionSurah: any) => {
         const editionAyah = editionSurah.ayahs.find((a: any) => a.numberInSurah === result.numberInSurah);
         if (editionAyah) {
@@ -79,7 +99,7 @@ export const quranService = {
           }
         }
       });
-      // Ensure surah and ayah numbers are set for the audio URL
+
       const surahNum = result.surahNumber;
       const ayahNum = result.numberInSurah;
       result.malayalamAudioUrl = undefined;
@@ -90,7 +110,6 @@ export const quranService = {
     });
   },
 
-  // Helper to check if Malayalam audio exists for a given surah and ayah
   async fetchMalayalamAudioUrl(surah: number, ayah: number): Promise<string | null> {
     const url = this.getMalayalamAudioUrl(surah, ayah);
     try {
@@ -102,7 +121,7 @@ export const quranService = {
     } catch {
       return null;
     }
-	},
+  },
 
   async search(query: string): Promise<any> {
     const response = await fetch(`${BASE_URL}/search/${query}/all/en.sahih`);

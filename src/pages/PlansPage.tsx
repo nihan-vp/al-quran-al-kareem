@@ -10,6 +10,7 @@ import { useFirestore } from '../hooks/useFirestore';
 import { useMemorizationPlayback } from '../hooks/useMemorizationPlayback';
 import { quranService } from '../services/quranService';
 import { Surah, Ayah, MemorizationPlan, PlaybackSettings } from '../types';
+import { QURAN_RECITERS } from '../constants/reciters';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -168,7 +169,23 @@ function PlanPlayerModal({ plan, onClose }: PlanPlayerProps) {
             </Card>
 
             {/* Quick Audio Options */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label className="text-xs">Reciter</Label>
+                <Select value={settings.reciter} onValueChange={v => setSettings(prev => ({ ...prev, reciter: v }))}>
+                  <SelectTrigger className="h-10 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {QURAN_RECITERS.map(r => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="space-y-2">
                 <Label className="text-xs">Repeat Count</Label>
                 <Select value={repeatCount.toString()} onValueChange={v => setRepeatCount(Number(v))}>
@@ -188,7 +205,7 @@ function PlanPlayerModal({ plan, onClose }: PlanPlayerProps) {
               <div className="flex items-center justify-between border p-3 rounded-xl bg-white">
                 <div className="space-y-0.5">
                   <Label className="text-xs font-semibold">Malayalam Meaning</Label>
-                  <p className="text-[11px] text-muted-foreground">Play translation after recitation</p>
+                  <p className="text-[11px] text-muted-foreground">Play translation</p>
                 </div>
                 <Switch checked={playMeaning} onCheckedChange={setPlayMeaning} />
               </div>
@@ -216,6 +233,7 @@ export default function PlansPage() {
   const [repeatCount, setRepeatCount] = useState<number>(3);
   const [playMeaning, setPlayMeaning] = useState<boolean>(true);
   const [planTitle, setPlanTitle] = useState<string>('');
+  const [planReciter, setPlanReciter] = useState<string>('ar.alafasy');
 
   useEffect(() => {
     quranService.getSurahs().then(data => {
@@ -253,7 +271,7 @@ export default function PlansPage() {
         delayBetweenAyahs: 1,
         delayBetweenCycles: 3,
         playbackSpeed: 1,
-        reciter: 'ar.alafasy'
+        reciter: planReciter
       }
     });
 
@@ -369,7 +387,23 @@ export default function PlansPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                <div className="space-y-2">
+                  <Label>Reciter</Label>
+                  <Select value={planReciter} onValueChange={setPlanReciter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {QURAN_RECITERS.map(r => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="space-y-2">
                   <Label>Repeat Count</Label>
                   <Select value={repeatCount.toString()} onValueChange={v => setRepeatCount(Number(v))}>

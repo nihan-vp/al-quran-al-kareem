@@ -6,17 +6,22 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { mediaSessionManager } from '../services/mediaSession';
 import { workerTimer } from '../utils/workerTimer';
+import { quranAudioService } from '../services/quranAudioService';
 import { Ayah } from '../types';
+import { QURAN_RECITERS, DEFAULT_RECITER_ID, getReciterById, Reciter } from '../constants/reciters';
 
 export type RepeatMode = 'none' | 'one' | 'surah';
 
 export interface AudioTrack {
   id: string;
   src: string;
+  fallbackSrc?: string;
   title: string;
   subtitle: string;
   surahNumber?: number;
   ayahNumber?: number;
+  globalAyahNumber?: number;
+  reciterId?: string;
   reciterName?: string;
   arabicText?: string;
   translation?: string;
@@ -34,15 +39,20 @@ export interface AudioContextType {
   isPlayerVisible: boolean;
   activeSurahNumber: number | null;
   activeAyahNumber: number | null;
+  selectedReciter: string;
+  reciters: Reciter[];
 
   // Actions
+  setSelectedReciter: (reciterId: string) => void;
   playSingleTrack: (track: {
     src: string;
+    fallbackSrc?: string;
     title: string;
     subtitle: string;
     surahNumber?: number;
     ayahNumber?: number;
     repeat?: boolean;
+    reciterId?: string;
     reciterName?: string;
   }) => void;
 
@@ -54,6 +64,8 @@ export interface AudioContextType {
     reciter?: string;
     repeatAyahOnly?: boolean;
   }) => void;
+
+  playFullSurahStream: (surahNumber: number, surahName: string, reciterId?: string) => void;
 
   playAudio: (src: string, title: string, subtitle: string) => void;
   play: () => Promise<void>;
@@ -81,6 +93,13 @@ export const useAudio = (): AudioContextType => {
 };
 
 export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [selectedReciter, setSelectedReciterState] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('quran_selected_reciter') || DEFAULT_RECITER_ID;
+    }
+    return DEFAULT_RECITER_ID;
+  });
+
   const [currentTrack, setCurrentTrack] = useState<AudioTrack | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
@@ -92,9 +111,121 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isPlayerVisible, setIsPlayerVisible] = useState<boolean>(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const nextTrackTimerRef = useRef<number | null>(null);
+  const currentTrackRef = useRef<AudioTrack | null>(null);
+  const playlistRef = useRef<AudioTrack[]>([]);
+  const currentIndexRef = useRef<number>(-1);
+  const repeatModeRef = useRef<RepeatMode>('none');
+  const playbackSpeedRef = useRef<number>(1);
+  const fallbackTriedRef = useRef<boolean>(false);
 
-  // Initialize persistent audio element
+  // Sync refs
+  useEffect(() => {
+    currentTrackRef.current = currentTrack;
+  }, [currentTrack]);
+
+  useEffect(() => {
+    playlistRef.current = playlist;
+  }, [playlist]);
+
+  useEffect(() => {
+    currentIndexRef.current = currentIndex;
+  }, [currentIndex]);
+
+  useEffect(() => {
+    repeatModeRef.current = repeatMode;
+  }, [repeatMode]);
+
+  useEffect(() => {
+    playbackSpeedRef.current = playbackSpeed;
+    if (audioRef.current) {
+      audioRef.current.playbackRate = playbackSpeed;
+    }
+  }, [playbackSpeed]);
+
+  const playTrackDirectly = useCallback((track: AudioTrack) => {
+    if (!audioRef.current) return;
+
+    fallbackTriedRef.current = false;
+    currentTrackRef.current = track;
+    setCurrentTrack(track);
+    setIsPlayerVisible(true);
+    setProgress(0);
+
+    const audio = audioRef.current;
+    audio.src = track.src;
+    audio.playbackRate = playbackSpeedRef.current;
+    audio.load();
+
+    audio
+      .play()
+      .then(() => {
+        setIsPlaying(true);
+        mediaSessionManager.updatePlaybackState('playing');
+      })
+      .catch((err) => {
+        console.warn('Audio play request:', err);
+      });
+
+    // Update Media Session Lock Screen Metadata
+    mediaSessionManager.updateMetadata({
+      title: track.title,
+      artist: track.reciterName || track.subtitle,
+      album: 'Al-Quran Al-Kareem'
+    });
+
+    // Broadcast event for UI synchronization
+    window.dispatchEvent(
+      new CustomEvent('quran-audio-track-change', {
+        detail: {
+          surahNumber: track.surahNumber,
+          ayahNumber: track.ayahNumber,
+          track
+        }
+      })
+    );
+  }, []);
+
+  const nextTrack = useCallback(() => {
+    const list = playlistRef.current;
+    const idx = currentIndexRef.current;
+    const mode = repeatModeRef.current;
+
+    if (list.length > 0 && idx >= 0) {
+      if (idx < list.length - 1) {
+        const nextIdx = idx + 1;
+        setCurrentIndex(nextIdx);
+        playTrackDirectly(list[nextIdx]);
+      } else if (mode === 'surah') {
+        setCurrentIndex(0);
+        playTrackDirectly(list[0]);
+      } else {
+        setIsPlaying(false);
+        mediaSessionManager.updatePlaybackState('paused');
+      }
+    }
+  }, [playTrackDirectly]);
+
+  const prevTrack = useCallback(() => {
+    const list = playlistRef.current;
+    const idx = currentIndexRef.current;
+
+    if (audioRef.current && audioRef.current.currentTime > 3) {
+      audioRef.current.currentTime = 0;
+      setProgress(0);
+      return;
+    }
+
+    if (list.length > 0 && idx > 0) {
+      const prevIdx = idx - 1;
+      setCurrentIndex(prevIdx);
+      playTrackDirectly(list[prevIdx]);
+    } else if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+      setProgress(0);
+    }
+  }, [playTrackDirectly]);
+
+  // Single mount-only effect to initialize HTML5 Audio element
   useEffect(() => {
     const audio = new Audio();
     audio.preload = 'auto';
@@ -134,100 +265,131 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
     };
 
+    const handleEnded = () => {
+      window.dispatchEvent(new Event('quran-audio-ended'));
+
+      if (repeatModeRef.current === 'one') {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+        return;
+      }
+
+      const list = playlistRef.current;
+      const idx = currentIndexRef.current;
+
+      if (list.length > 0 && idx >= 0) {
+        if (idx < list.length - 1) {
+          const nextIdx = idx + 1;
+          setCurrentIndex(nextIdx);
+          playTrackDirectly(list[nextIdx]);
+        } else if (repeatModeRef.current === 'surah') {
+          setCurrentIndex(0);
+          playTrackDirectly(list[0]);
+        } else {
+          setIsPlaying(false);
+          mediaSessionManager.updatePlaybackState('paused');
+        }
+      } else {
+        setIsPlaying(false);
+        mediaSessionManager.updatePlaybackState('paused');
+      }
+    };
+
+    const handleError = () => {
+      const active = currentTrackRef.current;
+      if (!fallbackTriedRef.current && active?.fallbackSrc && audio.src !== active.fallbackSrc) {
+        console.warn('Primary audio stream failed, switching to backup CDN mirror:', active.fallbackSrc);
+        fallbackTriedRef.current = true;
+        audio.src = active.fallbackSrc;
+        audio.load();
+        audio.play().catch(() => {});
+      }
+    };
+
     audio.addEventListener('play', handlePlay);
     audio.addEventListener('pause', handlePause);
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+    audio.addEventListener('ended', handleEnded);
+    audio.addEventListener('error', handleError);
 
     return () => {
       audio.removeEventListener('play', handlePlay);
       audio.removeEventListener('pause', handlePause);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+      audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener('error', handleError);
       audio.pause();
       audio.src = '';
       mediaSessionManager.clear();
-      if (nextTrackTimerRef.current) workerTimer.clearTimeout(nextTrackTimerRef.current);
     };
-  }, []);
+  }, [playTrackDirectly]);
 
-  const playTrackDirectly = useCallback((track: AudioTrack) => {
-    if (!audioRef.current) return;
-    if (nextTrackTimerRef.current) {
-      workerTimer.clearTimeout(nextTrackTimerRef.current);
-      nextTrackTimerRef.current = null;
+  // Preload next upcoming audio tracks in background
+  useEffect(() => {
+    if (playlist.length > 0 && currentIndex >= 0) {
+      const upcomingUrls = playlist
+        .slice(currentIndex + 1, currentIndex + 4)
+        .map(t => t.src);
+      quranAudioService.preloadAudio(upcomingUrls);
+    }
+  }, [playlist, currentIndex]);
+
+  const setSelectedReciter = useCallback((reciterId: string) => {
+    setSelectedReciterState(reciterId);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('quran_selected_reciter', reciterId);
     }
 
-    setCurrentTrack(track);
-    setIsPlayerVisible(true);
-    setProgress(0);
+    const reciterInfo = getReciterById(reciterId);
+    const list = playlistRef.current;
+    const idx = currentIndexRef.current;
 
-    const audio = audioRef.current;
-    audio.src = track.src;
-    audio.playbackRate = playbackSpeed;
-
-    audio
-      .play()
-      .then(() => {
-        setIsPlaying(true);
-        mediaSessionManager.updatePlaybackState('playing');
-      })
-      .catch((err) => {
-        console.warn('Audio play request interrupted or prevented:', err);
+    if (list.length > 0 && idx >= 0) {
+      const updatedPlaylist = list.map((track) => {
+        if (track.globalAyahNumber && track.surahNumber && track.ayahNumber) {
+          const sources = quranAudioService.getAyahAudioSources(
+            track.surahNumber,
+            track.ayahNumber,
+            track.globalAyahNumber,
+            reciterId
+          );
+          return {
+            ...track,
+            src: sources.primary,
+            fallbackSrc: sources.fallback,
+            reciterId,
+            reciterName: reciterInfo.name,
+            subtitle: `Recitation: ${reciterInfo.name}`
+          };
+        }
+        return track;
       });
 
-    // Update Media Session Lock Screen Metadata
-    mediaSessionManager.updateMetadata({
-      title: track.title,
-      artist: track.reciterName || track.subtitle,
-      album: 'Al-Quran Al-Kareem'
-    });
+      setPlaylist(updatedPlaylist);
 
-    // Broadcast event for UI synchronization
-    window.dispatchEvent(
-      new CustomEvent('quran-audio-track-change', {
-        detail: {
-          surahNumber: track.surahNumber,
-          ayahNumber: track.ayahNumber,
-          track
+      const active = updatedPlaylist[idx];
+      if (active && audioRef.current) {
+        const wasPlaying = isPlaying;
+        const currentPos = audioRef.current.currentTime || 0;
+
+        setCurrentTrack(active);
+        audioRef.current.src = active.src;
+        audioRef.current.currentTime = currentPos;
+
+        if (wasPlaying) {
+          audioRef.current.play().catch(() => {});
         }
-      })
-    );
-  }, [playbackSpeed]);
 
-  const nextTrack = useCallback(() => {
-    if (playlist.length > 0 && currentIndex >= 0) {
-      if (currentIndex < playlist.length - 1) {
-        const nextIdx = currentIndex + 1;
-        setCurrentIndex(nextIdx);
-        playTrackDirectly(playlist[nextIdx]);
-      } else if (repeatMode === 'surah') {
-        setCurrentIndex(0);
-        playTrackDirectly(playlist[0]);
-      } else {
-        setIsPlaying(false);
-        mediaSessionManager.updatePlaybackState('paused');
+        mediaSessionManager.updateMetadata({
+          title: active.title,
+          artist: active.reciterName || reciterInfo.name,
+          album: 'Al-Quran Al-Kareem'
+        });
       }
     }
-  }, [playlist, currentIndex, repeatMode, playTrackDirectly]);
-
-  const prevTrack = useCallback(() => {
-    if (audioRef.current && audioRef.current.currentTime > 3) {
-      // Seek to beginning if more than 3 seconds in
-      audioRef.current.currentTime = 0;
-      setProgress(0);
-      return;
-    }
-
-    if (playlist.length > 0 && currentIndex > 0) {
-      const prevIdx = currentIndex - 1;
-      setCurrentIndex(prevIdx);
-      playTrackDirectly(playlist[prevIdx]);
-    } else if (audioRef.current) {
-      audioRef.current.currentTime = 0;
-      setProgress(0);
-    }
-  }, [playlist, currentIndex, playTrackDirectly]);
+  }, [isPlaying]);
 
   const seekTo = useCallback((seconds: number) => {
     if (audioRef.current && !isNaN(seconds)) {
@@ -322,47 +484,6 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setRepeatMode(nextMode);
   }, [repeatMode, setRepeatMode]);
 
-  // Handle Track Ended Event with Background Worker Timer support
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const handleEnded = () => {
-      window.dispatchEvent(new Event('quran-audio-ended'));
-
-      if (repeatMode === 'one') {
-        // Infinite repeat of current track
-        audio.currentTime = 0;
-        audio.play().catch(() => {});
-        return;
-      }
-
-      if (playlist.length > 0 && currentIndex >= 0) {
-        if (currentIndex < playlist.length - 1) {
-          // Play next track seamlessly in background
-          const nextIdx = currentIndex + 1;
-          setCurrentIndex(nextIdx);
-          playTrackDirectly(playlist[nextIdx]);
-        } else if (repeatMode === 'surah') {
-          // Loop whole surah from beginning
-          setCurrentIndex(0);
-          playTrackDirectly(playlist[0]);
-        } else {
-          setIsPlaying(false);
-          mediaSessionManager.updatePlaybackState('paused');
-        }
-      } else {
-        setIsPlaying(false);
-        mediaSessionManager.updatePlaybackState('paused');
-      }
-    };
-
-    audio.onended = handleEnded;
-    return () => {
-      audio.onended = null;
-    };
-  }, [repeatMode, playlist, currentIndex, playTrackDirectly]);
-
   // Setup MediaSession Action Handlers for System / Lock Screen Controls
   useEffect(() => {
     mediaSessionManager.setActionHandlers({
@@ -377,38 +498,44 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     });
   }, [play, pause, prevTrack, nextTrack, seekBy, seekTo, stop]);
 
-  // Play a single track (e.g. from AudioPlayer modal, specific ayah, or external URL)
+  // Play a single track
   const playSingleTrack = useCallback(
     (trackData: {
       src: string;
+      fallbackSrc?: string;
       title: string;
       subtitle: string;
       surahNumber?: number;
       ayahNumber?: number;
       repeat?: boolean;
+      reciterId?: string;
       reciterName?: string;
     }) => {
       const mode: RepeatMode = trackData.repeat ? 'one' : 'none';
       setRepeatModeState(mode);
 
+      const reciter = getReciterById(trackData.reciterId || selectedReciter);
+
       const track: AudioTrack = {
         id: `single-${Date.now()}`,
         src: trackData.src,
+        fallbackSrc: trackData.fallbackSrc,
         title: trackData.title,
         subtitle: trackData.subtitle,
         surahNumber: trackData.surahNumber,
         ayahNumber: trackData.ayahNumber,
-        reciterName: trackData.reciterName || 'Mishary Rashid Alafasy'
+        reciterId: reciter.id,
+        reciterName: trackData.reciterName || reciter.name
       };
 
       setPlaylist([track]);
       setCurrentIndex(0);
       playTrackDirectly(track);
     },
-    [playTrackDirectly]
+    [playTrackDirectly, selectedReciter]
   );
 
-  // Play whole Surah Ayahs in sequence with continuous background playback
+  // Play whole Surah Ayahs in sequence with continuous background playback and mirrors
   const playSurahAyahs = useCallback(
     (params: {
       surahNumber: number;
@@ -418,19 +545,33 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       reciter?: string;
       repeatAyahOnly?: boolean;
     }) => {
-      const { surahNumber, surahName, ayahs, startIndex = 0, reciter = 'ar.alafasy', repeatAyahOnly = false } = params;
+      const activeReciterId = params.reciter || selectedReciter || DEFAULT_RECITER_ID;
+      const reciterInfo = getReciterById(activeReciterId);
+      const { surahNumber, surahName, ayahs, startIndex = 0, repeatAyahOnly = false } = params;
 
-      const newPlaylist: AudioTrack[] = ayahs.map((ayah) => ({
-        id: `surah-${surahNumber}-ayah-${ayah.numberInSurah}`,
-        src: `https://cdn.islamic.network/quran/audio/128/${reciter}/${ayah.number}.mp3`,
-        title: `${surahName} • Ayah ${ayah.numberInSurah}`,
-        subtitle: `Recitation: Mishary Rashid Alafasy`,
-        surahNumber,
-        ayahNumber: ayah.numberInSurah,
-        reciterName: 'Mishary Rashid Alafasy',
-        arabicText: ayah.text,
-        translation: ayah.translation
-      }));
+      const newPlaylist: AudioTrack[] = ayahs.map((ayah) => {
+        const sources = quranAudioService.getAyahAudioSources(
+          surahNumber,
+          ayah.numberInSurah,
+          ayah.number,
+          activeReciterId
+        );
+
+        return {
+          id: `surah-${surahNumber}-ayah-${ayah.numberInSurah}`,
+          src: sources.primary,
+          fallbackSrc: sources.fallback,
+          title: `${surahName} • Ayah ${ayah.numberInSurah}`,
+          subtitle: `Recitation: ${reciterInfo.name}`,
+          surahNumber,
+          ayahNumber: ayah.numberInSurah,
+          globalAyahNumber: ayah.number,
+          reciterId: activeReciterId,
+          reciterName: reciterInfo.name,
+          arabicText: ayah.text,
+          translation: ayah.translation
+        };
+      });
 
       const targetIndex = Math.max(0, Math.min(startIndex, newPlaylist.length - 1));
       setPlaylist(newPlaylist);
@@ -446,7 +587,32 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         playTrackDirectly(newPlaylist[targetIndex]);
       }
     },
-    [playTrackDirectly]
+    [playTrackDirectly, selectedReciter]
+  );
+
+  // Play full continuous Surah stream MP3
+  const playFullSurahStream = useCallback(
+    (surahNumber: number, surahName: string, reciterId?: string) => {
+      const activeReciterId = reciterId || selectedReciter || DEFAULT_RECITER_ID;
+      const reciterInfo = getReciterById(activeReciterId);
+      const streamUrl = quranAudioService.getFullSurahStreamUrl(surahNumber, activeReciterId);
+
+      const track: AudioTrack = {
+        id: `full-surah-${surahNumber}`,
+        src: streamUrl,
+        title: `Surah ${surahName} (Full Recitation)`,
+        subtitle: `Recitation: ${reciterInfo.name}`,
+        surahNumber,
+        reciterId: activeReciterId,
+        reciterName: reciterInfo.name
+      };
+
+      setPlaylist([track]);
+      setCurrentIndex(0);
+      setRepeatModeState('none');
+      playTrackDirectly(track);
+    },
+    [playTrackDirectly, selectedReciter]
   );
 
   // Backward compatible playAudio helper
@@ -475,8 +641,12 @@ export const AudioProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         isPlayerVisible,
         activeSurahNumber,
         activeAyahNumber,
+        selectedReciter,
+        reciters: QURAN_RECITERS,
+        setSelectedReciter,
         playSingleTrack,
         playSurahAyahs,
+        playFullSurahStream,
         playAudio,
         play,
         pause,

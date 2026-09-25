@@ -36,6 +36,7 @@ import { useFirestore } from '@/hooks/useFirestore';
 import { useMemorizationPlayback } from '@/hooks/useMemorizationPlayback';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Surah, Ayah, PlaybackSettings, MemorizationPreset } from '@/types';
+import { QURAN_RECITERS } from '@/constants/reciters';
 
 export function MemorizationView() {
   const { user } = useAuth();
@@ -207,6 +208,22 @@ export function MemorizationView() {
                 <p className="text-xs text-muted-foreground">Repeat only the selected start ayah</p>
               </div>
               <Switch checked={repeatOneAyah} onCheckedChange={setRepeatOneAyah} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Reciter</Label>
+              <Select value={settings.reciter} onValueChange={(v) => setSettings(prev => ({ ...prev, reciter: v }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose Reciter" />
+                </SelectTrigger>
+                <SelectContent>
+                  {QURAN_RECITERS.map(r => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.name} ({r.arabicName})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

@@ -36,6 +36,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import { quranService } from './services/quranService';
 import { Surah, Ayah, SurahDetail } from './types';
@@ -283,10 +284,14 @@ const SurahView = () => {
   
   const {
     playSurahAyahs,
+    playFullSurahStream,
     isPlaying,
     activeSurahNumber,
     activeAyahNumber,
     repeatMode,
+    selectedReciter,
+    reciters,
+    setSelectedReciter,
     togglePlay,
     setRepeatMode
   } = useAudio();
@@ -418,8 +423,8 @@ const SurahView = () => {
             <span>{surah.numberOfAyahs} Ayahs</span>
           </div>
 
-          {/* Quick Play Surah Button */}
-          <div className="pt-2">
+          {/* Quick Play & Reciter Selector */}
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
             <Button
               className="bg-white text-brand-primary hover:bg-white/90 font-bold px-6 py-5 rounded-2xl shadow-lg flex items-center gap-2"
               onClick={() => {
@@ -441,10 +446,27 @@ const SurahView = () => {
                 </>
               ) : (
                 <>
-                  <Play className="h-4 w-4 fill-current" /> Play Full Surah (Background)
+                  <Play className="h-4 w-4 fill-current" /> Play Full Surah
                 </>
               )}
             </Button>
+
+            {/* Reciter Selector */}
+            <div className="w-auto">
+              <Select value={selectedReciter} onValueChange={setSelectedReciter}>
+                <SelectTrigger className="h-11 rounded-2xl border-white/20 bg-white/15 px-3.5 text-xs font-bold text-white backdrop-blur-md hover:bg-white/25">
+                  <UserIcon className="h-3.5 w-3.5 mr-1" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-72">
+                  {reciters.map(r => (
+                    <SelectItem key={r.id} value={r.id}>
+                      {r.name} ({r.arabicName})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
         </div>
         {/* Decorative elements */}
